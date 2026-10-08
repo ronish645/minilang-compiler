@@ -152,17 +152,8 @@ class CodeGenerator:
         return method(node)
 
     def expr_Literal(self, node: ASTNode) -> str:
-        value = node.value
-        if value in ("true", "false", "null"):
-            return str(value)
-        if isinstance(value, str):
-            is_float_like = "." in value or "e" in value.lower()
-            try:
-                float(value) if is_float_like else int(value)
-                return value
-            except ValueError:
-                return repr(value)
-        return str(value)
+        # Strings are quoted so they can't be mistaken for numbers or names.
+        return repr(node.value) if node.literal_type == "string" else str(node.value)
 
     def expr_Identifier(self, node: ASTNode) -> str:
         return node.value

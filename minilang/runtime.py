@@ -12,6 +12,7 @@ from typing import Any
 
 from minilang.ast_nodes import ASTNode
 from minilang.errors import MiniLangRuntimeError
+from minilang.values import apply_binary, format_value, literal_value, negate
 
 
 class ReturnSignal(Exception):
@@ -63,45 +64,6 @@ class UserFunction:
     closure: Environment
 
 
-def literal_value(value: Any) -> Any:
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    if value == "null":
-        return None
-    if isinstance(value, str):
-        try:
-            if "." in value or "e" in value.lower():
-                return float(value)
-            return int(value)
-        except ValueError:
-            return value
-    return value
-
-
-def apply_binary(op: str, left: Any, right: Any) -> Any:
-    operations = {
-        "+": lambda: left + right,
-        "-": lambda: left - right,
-        "*": lambda: left * right,
-        "/": lambda: left / right,
-        "%": lambda: left % right,
-        "<": lambda: left < right,
-        ">": lambda: left > right,
-        "<=": lambda: left <= right,
-        ">=": lambda: left >= right,
-        "==": lambda: left == right,
-        "!=": lambda: left != right,
-        "===": lambda: type(left) is type(right) and left == right,
-        "&&": lambda: bool(left) and bool(right),
-        "||": lambda: bool(left) or bool(right),
-    }
-    if op not in operations:
-        raise MiniLangRuntimeError(f"Runtime error: unknown operator '{op}'")
-    return operations[op]()
-
-
 class MiniRuntime:
     def __init__(self) -> None:
         self.global_env = Environment()
@@ -133,7 +95,7 @@ class MiniRuntime:
         env.define(name, value, mutable=(node.value != "const"))
 
     def exec_Print(self, node: ASTNode, env: Environment) -> None:
-        self.output.append(str(self.eval_expr(node.children[0], env)))
+        self.output.append(format_value(self.eval_expr(node.children[0], env)))
 
     def exec_ExpressionStatement(self, node: ASTNode, env: Environment) -> None:
         self.eval_expr(node.children[0], env)
@@ -178,7 +140,7 @@ class MiniRuntime:
         return method(node, env)
 
     def eval_Literal(self, node: ASTNode, env: Environment) -> Any:
-        return literal_value(node.value)
+        return literal_value(node.value, node.literal_type)
 
     def eval_Identifier(self, node: ASTNode, env: Environment) -> Any:
         return env.resolve(node.value).value
@@ -206,10 +168,10 @@ class MiniRuntime:
         if op == "!":
             return not value
         if op == "-":
-            return -value
+            return negate(value)
         if child.kind != "Identifier":
             raise MiniLangRuntimeError(f"Runtime error: '{op}' requires identifier")
-        new_value = value + 1 if op == "++" else value - 1
+        new_value = apply_binary(op[0], value, 1)
         env.assign(child.value, new_value)
         return new_value
 
@@ -218,7 +180,7 @@ class MiniRuntime:
         if child.kind != "Identifier":
             raise MiniLangRuntimeError(f"Runtime error: postfix '{node.value}' requires identifier")
         old_value = env.resolve(child.value).value
-        env.assign(child.value, old_value + 1 if node.value == "++" else old_value - 1)
+        env.assign(child.value, apply_binary(node.value[0], old_value, 1))
         return old_value
 
     def eval_Call(self, node: ASTNode, env: Environment) -> Any:

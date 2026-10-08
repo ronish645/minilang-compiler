@@ -9,7 +9,6 @@ reassigning a ``const``, or calling a function with the wrong arity.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from minilang.ast_nodes import ASTNode
 from minilang.errors import SemanticError
@@ -51,37 +50,40 @@ class Scope:
         return None
 
 
-def is_numeric(t: str) -> bool:
-    return t in ("int", "float")
+# Typing is *gradual*: function parameters and call results are "unknown"
+# at compile time. An unknown operand is accepted wherever a concrete type
+# would be, and any real mismatch is caught by the runtime instead.
+UNKNOWN = "unknown"
 
 
 def is_numeric_or_unknown(t: str) -> bool:
-    return t in ("int", "float", "unknown")
+    return t in ("int", "float", UNKNOWN)
 
 
-def compatible_types(left: str, right: str) -> bool:
-    return left == right or (left == "float" and right == "int")
+def is_bool_or_unknown(t: str) -> bool:
+    return t in ("bool", UNKNOWN)
 
 
-def literal_type(value: Any) -> str:
-    if value in ("true", "false"):
-        return "bool"
-    if value == "null":
-        return "null"
-    if isinstance(value, str):
-        try:
-            int(value)
-            return "int"
-        except ValueError:
-            pass
-        try:
-            float(value)
-            if "." in value or "e" in value.lower():
-                return "float"
-        except ValueError:
-            pass
-        return "string"
-    return "unknown"
+def compatible_types(target: str, value: str) -> bool:
+    """Can a ``value``-typed expression be stored in / compared with ``target``?"""
+    if UNKNOWN in (target, value) or "null" in (target, value):
+        return True
+    return target == value or (target == "float" and value == "int")
+
+
+def arithmetic_result_type(op: str, left: str, right: str) -> str:
+    if op == "+" and {left, right} <= {"string", UNKNOWN} and "string" in (left, right):
+        return "string" if left == right else UNKNOWN
+    if not (is_numeric_or_unknown(left) and is_numeric_or_unknown(right)):
+        raise SemanticError(
+            f"Semantic error: arithmetic operator '{op}' requires numeric operands"
+            f"{' (or two strings)' if op == '+' else ''}, got {left} and {right}"
+        )
+    if UNKNOWN in (left, right):
+        return UNKNOWN
+    if op == "/":
+        return "float"
+    return "float" if "float" in (left, right) else "int"
 
 
 class SemanticAnalyzer:
@@ -131,7 +133,7 @@ class SemanticAnalyzer:
                 raise SemanticError(
                     f"Semantic error: const variable '{var_name}' must be initialized"
                 )
-            self.current_scope.declare(Symbol(var_name, "unknown", decl_kind))
+            self.current_scope.declare(Symbol(var_name, UNKNOWN, decl_kind))
             return
 
         expr_type = self.analyze(node.children[1])
@@ -144,8 +146,11 @@ class SemanticAnalyzer:
         self.analyze(node.children[0])
 
     def require_bool_condition(self, node: ASTNode, construct: str) -> None:
-        if self.analyze(node) != "bool":
-            raise SemanticError(f"Semantic error: {construct} condition must be boolean")
+        cond_type = self.analyze(node)
+        if not is_bool_or_unknown(cond_type):
+            raise SemanticError(
+                f"Semantic error: {construct} condition must be boolean, got {cond_type}"
+            )
 
     def visit_If(self, node: ASTNode) -> None:
         self.require_bool_condition(node.children[0], "if")
@@ -180,7 +185,7 @@ class SemanticAnalyzer:
         outer_in_function = self.in_function
         self.in_function = True
         for param in param_names:
-            self.current_scope.declare(Symbol(param, "unknown", "param", initialized=True))
+            self.current_scope.declare(Symbol(param, UNKNOWN, "param", initialized=True))
         self.analyze(body_node)
         self.in_function = outer_in_function
         self.exit_scope()
@@ -200,7 +205,7 @@ class SemanticAnalyzer:
         return symbol.var_type
 
     def visit_Literal(self, node: ASTNode) -> str:
-        return literal_type(node.value)
+        return node.literal_type
 
     def visit_Assign(self, node: ASTNode) -> str | None:
         op = node.value
@@ -219,7 +224,7 @@ class SemanticAnalyzer:
 
         right_type = self.analyze(right)
         if op == "=":
-            if symbol.var_type == "unknown":
+            if symbol.var_type in (UNKNOWN, "null"):
                 symbol.var_type = right_type
             elif not compatible_types(symbol.var_type, right_type):
                 raise SemanticError(
@@ -230,32 +235,19 @@ class SemanticAnalyzer:
             return symbol.var_type
 
         if op in COMPOUND_ASSIGN_OPS:
-            if not (is_numeric_or_unknown(symbol.var_type) and is_numeric_or_unknown(right_type)):
-                raise SemanticError(f"Semantic error: operator '{op}' requires numeric operands")
-            if "unknown" in (symbol.var_type, right_type):
-                return "unknown"
-            return "float" if "float" in (symbol.var_type, right_type) else "int"
+            return arithmetic_result_type(op[0], symbol.var_type, right_type)
         return None
 
     def visit_BinaryOp(self, node: ASTNode) -> str:
         op = node.value
         left_type = self.analyze(node.children[0])
         right_type = self.analyze(node.children[1])
-        both_numeric = is_numeric_or_unknown(left_type) and is_numeric_or_unknown(right_type)
 
         if op in ARITHMETIC_OPS:
-            if not both_numeric:
-                raise SemanticError(
-                    f"Semantic error: arithmetic operator '{op}' requires numeric operands"
-                )
-            if "unknown" in (left_type, right_type):
-                return "unknown"
-            if op == "/":
-                return "float"
-            return "float" if "float" in (left_type, right_type) else "int"
+            return arithmetic_result_type(op, left_type, right_type)
 
         if op in COMPARISON_OPS:
-            if not both_numeric:
+            if not (is_numeric_or_unknown(left_type) and is_numeric_or_unknown(right_type)):
                 raise SemanticError(
                     f"Semantic error: comparison operator '{op}' requires numeric operands"
                 )
@@ -269,13 +261,13 @@ class SemanticAnalyzer:
             return "bool"
 
         if op in LOGICAL_OPS:
-            if left_type != "bool" or right_type != "bool":
+            if not (is_bool_or_unknown(left_type) and is_bool_or_unknown(right_type)):
                 raise SemanticError(
                     f"Semantic error: logical operator '{op}' requires boolean operands"
                 )
             return "bool"
 
-        return "unknown"
+        return UNKNOWN
 
     def visit_UnaryOp(self, node: ASTNode) -> str | None:
         op = node.value
@@ -283,12 +275,12 @@ class SemanticAnalyzer:
         expr_type = self.analyze(expr)
 
         if op == "!":
-            if expr_type != "bool":
+            if not is_bool_or_unknown(expr_type):
                 raise SemanticError("Semantic error: '!' operator requires boolean operand")
             return "bool"
 
         if op == "-":
-            if not is_numeric(expr_type):
+            if not is_numeric_or_unknown(expr_type):
                 raise SemanticError("Semantic error: unary '-' requires numeric operand")
             return expr_type
 
@@ -324,4 +316,4 @@ class SemanticAnalyzer:
             )
         for arg in args_node.children:
             self.analyze(arg)
-        return "unknown"
+        return UNKNOWN

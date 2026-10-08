@@ -20,6 +20,8 @@ TERM_OPS = ("+", "-")
 FACTOR_OPS = ("*", "/", "%")
 PREFIX_OPS = ("!", "-", "++", "--")
 POSTFIX_OPS = ("++", "--")
+LITERAL_TOKEN_TYPES = {"INT": "int", "FLOAT": "float", "STRING": "string"}
+LITERAL_KEYWORD_TYPES = {"true": "bool", "false": "bool", "null": "null"}
 
 
 class Parser:
@@ -241,13 +243,15 @@ class Parser:
 
     def primary(self) -> ASTNode:
         tok = self.current()
-        if tok.type in ("INT", "FLOAT", "STRING"):
+        if tok.type in LITERAL_TOKEN_TYPES:
             self.advance()
-            return ASTNode("Literal", value=tok.value)
+            return ASTNode("Literal", value=tok.value, literal_type=LITERAL_TOKEN_TYPES[tok.type])
 
-        if tok.type == "KW" and tok.value in ("true", "false", "null"):
+        if tok.type == "KW" and tok.value in LITERAL_KEYWORD_TYPES:
             self.advance()
-            return ASTNode("Literal", value=tok.value)
+            return ASTNode(
+                "Literal", value=tok.value, literal_type=LITERAL_KEYWORD_TYPES[tok.value]
+            )
 
         if tok.type == "IDENT":
             self.advance()

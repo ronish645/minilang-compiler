@@ -16,6 +16,10 @@ class ASTNode:
     kind: str
     value: Any = None
     children: list[ASTNode] = field(default_factory=list)
+    # Only set on Literal nodes: "int" | "float" | "string" | "bool" | "null".
+    # Kept separately because ``value`` stores the raw source text, and the
+    # string "42" must not be confused with the number 42.
+    literal_type: str | None = None
 
     def pretty(self, level: int = 0) -> str:
         indent = "  " * level
