@@ -1,0 +1,454 @@
+# Benchmark tasks. Each task states the exact expected output (the model
+# sees it, like a test case) and carries a hidden reference solution that
+# tests/bench/test_tasks.py runs to prove the task is solvable.
+#
+# Tiers:
+#   1 basics      - loops, conditionals, functions
+#   2 algorithms  - classic small programs
+#   3 spec traps  - only solvable by respecting MiniLang's differences from
+#                   JS/Python: no break, `/` always yields a float, `&&` does
+#                   not short-circuit, no int-to-string conversion
+
+tasks:
+  # ---------------------------------------------------------------- tier 1
+  - id: hello
+    tier: 1
+    prompt: Print the text Hello, MiniLang!
+    expected: |
+      Hello, MiniLang!
+    reference: |
+      print("Hello, MiniLang!");
+
+  - id: sum_to_100
+    tier: 1
+    prompt: Print the sum of the integers from 1 to 100 inclusive, computed with a loop.
+    expected: |
+      5050
+    reference: |
+      let total = 0;
+      for (let i = 1; i <= 100; i++) { total += i; }
+      print(total);
+
+  - id: countdown
+    tier: 1
+    prompt: Print the numbers 5 down to 1, one per line, then print Liftoff!
+    expected: |
+      5
+      4
+      3
+      2
+      1
+      Liftoff!
+    reference: |
+      let n = 5;
+      while (n > 0) { print(n); n--; }
+      print("Liftoff!");
+
+  - id: evens
+    tier: 1
+    prompt: Print the even numbers from 2 to 12 inclusive, one per line.
+    expected: |
+      2
+      4
+      6
+      8
+      10
+      12
+    reference: |
+      for (let i = 2; i <= 12; i += 2) { print(i); }
+
+  - id: max_of_three
+    tier: 1
+    prompt: >-
+      Write a function max3(a, b, c) that returns the largest of its three arguments.
+      Print max3(3, 9, 4), then max3(10, 2, 7), then max3(-1, -5, -3).
+    expected: |
+      9
+      10
+      -1
+    reference: |
+      fn max3(a, b, c) {
+          let m = a;
+          if (b > m) { m = b; }
+          if (c > m) { m = c; }
+          return m;
+      }
+      print(max3(3, 9, 4));
+      print(max3(10, 2, 7));
+      print(max3(-1, -5, -3));
+
+  - id: fizzbuzz
+    tier: 1
+    prompt: >-
+      For each number from 1 to 15, print Fizz if it is divisible by 3, Buzz if
+      divisible by 5, FizzBuzz if divisible by both, and otherwise the number itself.
+    expected: |
+      1
+      2
+      Fizz
+      4
+      Buzz
+      Fizz
+      7
+      8
+      Fizz
+      Buzz
+      11
+      Fizz
+      13
+      14
+      FizzBuzz
+    reference: |
+      for (let i = 1; i <= 15; i++) {
+          if (i % 15 == 0) { print("FizzBuzz"); }
+          else if (i % 3 == 0) { print("Fizz"); }
+          else if (i % 5 == 0) { print("Buzz"); }
+          else { print(i); }
+      }
+
+  - id: times_table
+    tier: 1
+    prompt: Print the first 10 multiples of 7 (7, 14, ..., 70), one per line.
+    expected: |
+      7
+      14
+      21
+      28
+      35
+      42
+      49
+      56
+      63
+      70
+    reference: |
+      for (let i = 1; i <= 10; i++) { print(7 * i); }
+
+  - id: sign
+    tier: 1
+    prompt: >-
+      Write a function sign(n) that returns the string negative, zero or positive.
+      Print sign(-5), then sign(0), then sign(12).
+    expected: |
+      negative
+      zero
+      positive
+    reference: |
+      fn sign(n) {
+          if (n < 0) { return "negative"; }
+          if (n == 0) { return "zero"; }
+          return "positive";
+      }
+      print(sign(-5));
+      print(sign(0));
+      print(sign(12));
+
+  # ---------------------------------------------------------------- tier 2
+  - id: factorial
+    tier: 2
+    prompt: Write a recursive function fact(n) and print fact(10).
+    expected: |
+      3628800
+    reference: |
+      fn fact(n) {
+          if (n <= 1) { return 1; }
+          return n * fact(n - 1);
+      }
+      print(fact(10));
+
+  - id: fibonacci
+    tier: 2
+    prompt: Print the first 12 Fibonacci numbers starting from 0, one per line.
+    expected: |
+      0
+      1
+      1
+      2
+      3
+      5
+      8
+      13
+      21
+      34
+      55
+      89
+    reference: |
+      let a = 0;
+      let b = 1;
+      for (let i = 0; i < 12; i++) {
+          print(a);
+          let next = a + b;
+          a = b;
+          b = next;
+      }
+
+  - id: primes
+    tier: 2
+    prompt: >-
+      Print every prime number below 30, one per line, then print the line count:
+      followed by a line with how many primes there were.
+    expected: |
+      2
+      3
+      5
+      7
+      11
+      13
+      17
+      19
+      23
+      29
+      count:
+      10
+    reference: |
+      fn isPrime(n) {
+          if (n < 2) { return false; }
+          let d = 2;
+          let prime = true;
+          while (d * d <= n && prime) {
+              if (n % d == 0) { prime = false; }
+              d++;
+          }
+          return prime;
+      }
+      let count = 0;
+      for (let i = 2; i < 30; i++) {
+          if (isPrime(i)) { print(i); count += 1; }
+      }
+      print("count:");
+      print(count);
+
+  - id: gcd
+    tier: 2
+    prompt: >-
+      Write a function gcd(a, b) using Euclid's algorithm. Print gcd(48, 18),
+      then gcd(17, 5), then gcd(100, 75).
+    expected: |
+      6
+      1
+      25
+    reference: |
+      fn gcd(a, b) {
+          while (b != 0) {
+              let r = a % b;
+              a = b;
+              b = r;
+          }
+          return a;
+      }
+      print(gcd(48, 18));
+      print(gcd(17, 5));
+      print(gcd(100, 75));
+
+  - id: power
+    tier: 2
+    prompt: >-
+      Write a function power(base, exp) for non-negative integer exponents without
+      using any built-in power operator. Print power(2, 10), power(3, 4), power(5, 0).
+    expected: |
+      1024
+      81
+      1
+    reference: |
+      fn power(base, exp) {
+          let result = 1;
+          for (let i = 0; i < exp; i++) { result *= base; }
+          return result;
+      }
+      print(power(2, 10));
+      print(power(3, 4));
+      print(power(5, 0));
+
+  - id: stars
+    tier: 2
+    prompt: Print a right triangle of asterisks with 4 rows, the first row having one star.
+    expected: |
+      *
+      **
+      ***
+      ****
+    reference: |
+      let row = "";
+      for (let i = 0; i < 4; i++) {
+          row = row + "*";
+          print(row);
+      }
+
+  - id: sum_of_squares
+    tier: 2
+    prompt: Print the sum of the squares of the integers from 1 to 10.
+    expected: |
+      385
+    reference: |
+      let total = 0;
+      for (let i = 1; i <= 10; i++) { total += i * i; }
+      print(total);
+
+  - id: multiples_3_or_5
+    tier: 2
+    prompt: Print the sum of all natural numbers below 100 that are multiples of 3 or 5.
+    expected: |
+      2318
+    reference: |
+      let total = 0;
+      for (let i = 1; i < 100; i++) {
+          if (i % 3 == 0 || i % 5 == 0) { total += i; }
+      }
+      print(total);
+
+  - id: leap_years
+    tier: 2
+    prompt: >-
+      Write a function isLeap(year) using the Gregorian rules (divisible by 4, except
+      centuries unless divisible by 400). Print isLeap(1900), isLeap(2000),
+      isLeap(2024), isLeap(2023).
+    expected: |
+      false
+      true
+      true
+      false
+    reference: |
+      fn isLeap(y) {
+          return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+      }
+      print(isLeap(1900));
+      print(isLeap(2000));
+      print(isLeap(2024));
+      print(isLeap(2023));
+
+  - id: celsius
+    tier: 2
+    prompt: >-
+      Write a function toFahrenheit(c) computing c * 9 / 5 + 32. Print the result for
+      0, then 100, then -40.
+    expected: |
+      32.0
+      212.0
+      -40.0
+    reference: |
+      fn toFahrenheit(c) { return c * 9 / 5 + 32; }
+      print(toFahrenheit(0));
+      print(toFahrenheit(100));
+      print(toFahrenheit(-40));
+
+  # ---------------------------------------------------------------- tier 3
+  - id: digit_sum
+    tier: 3
+    prompt: Print the sum of the decimal digits of 98765 as an integer.
+    expected: |
+      35
+    reference: |
+      // `/` always yields a float, so peel off digits by subtraction instead.
+      let n = 98765;
+      let total = 0;
+      while (n > 0) {
+          let digit = n % 10;
+          total += digit;
+          n -= digit;
+          let tens = 0;
+          while (n > 0) { n -= 10; tens++; }
+          n = tens;
+      }
+      print(total);
+
+  - id: reverse_number
+    tier: 3
+    prompt: Print the digits of 1234 reversed, as the integer 4321.
+    expected: |
+      4321
+    reference: |
+      fn div10(n) {
+          let q = 0;
+          while (n >= 10) { n -= 10; q++; }
+          return q;
+      }
+      let n = 1234;
+      let rev = 0;
+      while (n > 0) {
+          rev = rev * 10 + n % 10;
+          n = div10(n);
+      }
+      print(rev);
+
+  - id: binary
+    tier: 3
+    prompt: Print the binary representation of 13 as the text 1101.
+    expected: |
+      1101
+    reference: |
+      let n = 13.0;  // halving with `/` produces floats
+      let bits = "";
+      while (n > 0) {
+          if (n % 2 == 1) { bits = "1" + bits; } else { bits = "0" + bits; }
+          n = (n - n % 2) / 2;
+      }
+      print(bits);
+
+  - id: collatz
+    tier: 3
+    prompt: >-
+      Starting from 27, repeatedly apply: if n is even, n becomes n / 2; otherwise
+      n becomes 3n + 1. Print how many steps it takes to reach 1.
+    expected: |
+      111
+    reference: |
+      // n = n / 2 makes n a float, so it must be a float from the start.
+      let n = 27.0;
+      let steps = 0;
+      while (n != 1) {
+          if (n % 2 == 0) { n = n / 2; } else { n = 3 * n + 1; }
+          steps++;
+      }
+      print(steps);
+
+  - id: ratio_guard
+    tier: 3
+    prompt: >-
+      Write a function ratioAbove(a, b) that returns true when b is not zero and
+      a / b is greater than 2, and false otherwise. Print ratioAbove(10, 2),
+      ratioAbove(5, 0), ratioAbove(3, 3).
+    expected: |
+      true
+      false
+      false
+    reference: |
+      // && evaluates both sides, so guard the division with an if.
+      fn ratioAbove(a, b) {
+          if (b == 0) { return false; }
+          return a / b > 2;
+      }
+      print(ratioAbove(10, 2));
+      print(ratioAbove(5, 0));
+      print(ratioAbove(3, 3));
+
+  - id: first_square_over
+    tier: 3
+    prompt: Find the smallest positive integer n whose square is greater than 2000 and print n.
+    expected: |
+      45
+    reference: |
+      // No break: let the loop condition do the stopping.
+      let n = 1;
+      while (n * n <= 2000) { n++; }
+      print(n);
+
+  - id: repeat_string
+    tier: 3
+    prompt: >-
+      Write a function repeat(s, times) that returns s repeated the given number of
+      times. Print repeat("ab", 3), then repeat("xyz", 2), then the number 3 on its own
+      line followed by repeat("-", 3).
+    expected: |
+      ababab
+      xyzxyz
+      3
+      ---
+    reference: |
+      fn repeat(s, times) {
+          let out = "";
+          for (let i = 0; i < times; i++) { out = out + s; }
+          return out;
+      }
+      print(repeat("ab", 3));
+      print(repeat("xyz", 2));
+      print(3);
+      print(repeat("-", 3));

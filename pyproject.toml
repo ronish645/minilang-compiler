@@ -29,7 +29,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["minilang"]
+source = ["minilang", "bench"]
 omit = ["minilang/mcp_server.py"]
 
 [tool.coverage.report]
