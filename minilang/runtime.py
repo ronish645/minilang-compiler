@@ -36,7 +36,7 @@ class Environment:
 
     def define(self, name: str, value: Any, mutable: bool = True) -> None:
         if name in self.values:
-            raise MiniLangRuntimeError(f"Runtime error: '{name}' already defined in this scope")
+            raise MiniLangRuntimeError(f"'{name}' already defined in this scope")
         self.values[name] = Binding(value, mutable)
 
     def resolve(self, name: str) -> Binding:
@@ -45,14 +45,12 @@ class Environment:
             if name in env.values:
                 return env.values[name]
             env = env.parent
-        raise MiniLangRuntimeError(f"Runtime error: undefined variable '{name}'")
+        raise MiniLangRuntimeError(f"undefined variable '{name}'")
 
     def assign(self, name: str, value: Any) -> None:
         binding = self.resolve(name)
         if not binding.mutable:
-            raise MiniLangRuntimeError(
-                f"Runtime error: const variable '{name}' cannot be reassigned"
-            )
+            raise MiniLangRuntimeError(f"const variable '{name}' cannot be reassigned")
         binding.value = value
 
 
@@ -70,15 +68,23 @@ class MiniRuntime:
         self.output: list[str] = []
 
     def run(self, node: ASTNode) -> list[str]:
-        self.exec_stmt(node, self.global_env)
+        try:
+            self.exec_stmt(node, self.global_env)
+        except MiniLangRuntimeError as error:
+            error.partial_output = list(self.output)
+            raise
         return self.output
 
     # ---- statements --------------------------------------------------------
     def exec_stmt(self, node: ASTNode, env: Environment) -> None:
         method = getattr(self, f"exec_{node.kind}", None)
         if method is None:
-            raise MiniLangRuntimeError(f"Runtime error: unsupported statement '{node.kind}'")
-        method(node, env)
+            raise MiniLangRuntimeError(f"unsupported statement '{node.kind}'")
+        try:
+            method(node, env)
+        except MiniLangRuntimeError as error:
+            error.attach_position(node.line, node.col)
+            raise
 
     def exec_Program(self, node: ASTNode, env: Environment) -> None:
         for child in node.children:
@@ -136,8 +142,12 @@ class MiniRuntime:
     def eval_expr(self, node: ASTNode, env: Environment) -> Any:
         method = getattr(self, f"eval_{node.kind}", None)
         if method is None:
-            raise MiniLangRuntimeError(f"Runtime error: unsupported expression '{node.kind}'")
-        return method(node, env)
+            raise MiniLangRuntimeError(f"unsupported expression '{node.kind}'")
+        try:
+            return method(node, env)
+        except MiniLangRuntimeError as error:
+            error.attach_position(node.line, node.col)
+            raise
 
     def eval_Literal(self, node: ASTNode, env: Environment) -> Any:
         return literal_value(node.value, node.literal_type)
@@ -170,7 +180,7 @@ class MiniRuntime:
         if op == "-":
             return negate(value)
         if child.kind != "Identifier":
-            raise MiniLangRuntimeError(f"Runtime error: '{op}' requires identifier")
+            raise MiniLangRuntimeError(f"'{op}' requires identifier")
         new_value = apply_binary(op[0], value, 1)
         env.assign(child.value, new_value)
         return new_value
@@ -178,7 +188,7 @@ class MiniRuntime:
     def eval_PostfixOp(self, node: ASTNode, env: Environment) -> Any:
         child = node.children[0]
         if child.kind != "Identifier":
-            raise MiniLangRuntimeError(f"Runtime error: postfix '{node.value}' requires identifier")
+            raise MiniLangRuntimeError(f"postfix '{node.value}' requires identifier")
         old_value = env.resolve(child.value).value
         env.assign(child.value, apply_binary(node.value[0], old_value, 1))
         return old_value
@@ -187,15 +197,14 @@ class MiniRuntime:
         func_name = node.children[0].value
         func = env.resolve(func_name).value
         if not isinstance(func, UserFunction):
-            raise MiniLangRuntimeError(f"Runtime error: '{func_name}' is not callable")
+            raise MiniLangRuntimeError(f"'{func_name}' is not callable")
         args = [self.eval_expr(arg, env) for arg in node.children[1].children]
         return self.call_function(func, args)
 
     def call_function(self, func: UserFunction, args: list[Any]) -> Any:
         if len(args) != len(func.params):
             raise MiniLangRuntimeError(
-                f"Runtime error: function '{func.name}' expects {len(func.params)} "
-                f"argument(s), got {len(args)}"
+                f"function '{func.name}' expects {len(func.params)} argument(s), got {len(args)}"
             )
         call_env = Environment(func.closure)
         for name, value in zip(func.params, args, strict=True):

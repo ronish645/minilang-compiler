@@ -151,7 +151,7 @@ class Lexer:
         while True:
             ch = self.peek()
             if ch == EOF_CHAR:
-                raise LexerError(f"Unterminated string at {line}:{col}")
+                raise LexerError("unterminated string literal", line, col)
             if ch == quote:
                 # SQL-style doubled single quote: 'it''s' -> it's
                 if quote == "'" and self.peek(1) == "'":
@@ -191,11 +191,12 @@ class Lexer:
             return True
 
         if self.startswith(self.BLOCK_COMMENT_START):
+            start_line, start_col = self.line, self.col
             self.advance()
             self.advance()
             while True:
                 if self.peek() == EOF_CHAR:
-                    raise LexerError(f"Unterminated block comment at {self.line}:{self.col}")
+                    raise LexerError("unterminated block comment", start_line, start_col)
                 if self.startswith(self.BLOCK_COMMENT_END):
                     self.advance()
                     self.advance()
@@ -230,7 +231,7 @@ class Lexer:
             if op is not None:
                 tokens.append(op)
                 continue
-            raise LexerError(f"Unexpected character {ch!r} at {self.line}:{self.col}")
+            raise LexerError(f"unexpected character {ch!r}", self.line, self.col)
 
         tokens.append(Token("EOF", "", self.line, self.col))
         return tokens

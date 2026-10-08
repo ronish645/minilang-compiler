@@ -43,7 +43,7 @@ def literal_value(text: str, literal_type: str | None) -> Any:
         "null": lambda _: None,
     }
     if literal_type not in converters:
-        raise MiniLangRuntimeError(f"Runtime error: unknown literal type '{literal_type}'")
+        raise MiniLangRuntimeError(f"unknown literal type '{literal_type}'")
     return converters[literal_type](text)
 
 
@@ -67,9 +67,7 @@ def values_equal(left: Any, right: Any) -> bool:
 
 
 def type_error(op: str, left: Any, right: Any) -> MiniLangRuntimeError:
-    return MiniLangRuntimeError(
-        f"Runtime error: cannot apply '{op}' to {type_name(left)} and {type_name(right)}"
-    )
+    return MiniLangRuntimeError(f"cannot apply '{op}' to {type_name(left)} and {type_name(right)}")
 
 
 def apply_arithmetic(op: str, left: Any, right: Any) -> Any:
@@ -78,7 +76,7 @@ def apply_arithmetic(op: str, left: Any, right: Any) -> Any:
     if not (is_number(left) and is_number(right)):
         raise type_error(op, left, right)
     if op in ("/", "%") and right == 0:
-        raise MiniLangRuntimeError("Runtime error: division by zero")
+        raise MiniLangRuntimeError("division by zero")
     operations = {
         "+": lambda: left + right,
         "-": lambda: left - right,
@@ -112,10 +110,10 @@ def apply_binary(op: str, left: Any, right: Any) -> Any:
         return bool(left) and bool(right)
     if op == "||":
         return bool(left) or bool(right)
-    raise MiniLangRuntimeError(f"Runtime error: unknown operator '{op}'")
+    raise MiniLangRuntimeError(f"unknown operator '{op}'")
 
 
 def negate(value: Any) -> Any:
     if not is_number(value):
-        raise MiniLangRuntimeError(f"Runtime error: cannot apply unary '-' to {type_name(value)}")
+        raise MiniLangRuntimeError(f"cannot apply unary '-' to {type_name(value)}")
     return -value

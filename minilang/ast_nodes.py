@@ -20,6 +20,9 @@ class ASTNode:
     # Kept separately because ``value`` stores the raw source text, and the
     # string "42" must not be confused with the number 42.
     literal_type: str | None = None
+    # Source position of the token that starts this construct (0 = unknown).
+    line: int = 0
+    col: int = 0
 
     def pretty(self, level: int = 0) -> str:
         indent = "  " * level

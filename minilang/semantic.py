@@ -36,9 +36,7 @@ class Scope:
 
     def declare(self, symbol: Symbol) -> None:
         if symbol.name in self.symbols:
-            raise SemanticError(
-                f"Semantic error: '{symbol.name}' is already declared in this scope"
-            )
+            raise SemanticError(f"'{symbol.name}' is already declared in this scope")
         self.symbols[symbol.name] = symbol
 
     def lookup(self, name: str) -> Symbol | None:
@@ -76,7 +74,7 @@ def arithmetic_result_type(op: str, left: str, right: str) -> str:
         return "string" if left == right else UNKNOWN
     if not (is_numeric_or_unknown(left) and is_numeric_or_unknown(right)):
         raise SemanticError(
-            f"Semantic error: arithmetic operator '{op}' requires numeric operands"
+            f"arithmetic operator '{op}' requires numeric operands"
             f"{' (or two strings)' if op == '+' else ''}, got {left} and {right}"
         )
     if UNKNOWN in (left, right):
@@ -101,7 +99,12 @@ class SemanticAnalyzer:
 
     def analyze(self, node: ASTNode) -> str | None:
         method = getattr(self, f"visit_{node.kind}", self.generic_visit)
-        return method(node)
+        try:
+            return method(node)
+        except SemanticError as error:
+            # The innermost node being checked is the most precise location.
+            error.attach_position(node.line, node.col)
+            raise
 
     def generic_visit(self, node: ASTNode) -> None:
         for child in node.children:
@@ -111,9 +114,9 @@ class SemanticAnalyzer:
         """Resolve a variable that is about to be modified by ``op``."""
         symbol = self.current_scope.lookup(name)
         if symbol is None:
-            raise SemanticError(f"Semantic error: variable '{name}' used before declaration")
+            raise SemanticError(f"variable '{name}' used before declaration")
         if symbol.kind == "const":
-            raise SemanticError(f"Semantic error: const variable '{name}' cannot be updated")
+            raise SemanticError(f"const variable '{name}' cannot be updated")
         return symbol
 
     # ---- statements --------------------------------------------------------
@@ -130,9 +133,7 @@ class SemanticAnalyzer:
         var_name = node.children[0].value
         if len(node.children) == 1:
             if decl_kind == "const":
-                raise SemanticError(
-                    f"Semantic error: const variable '{var_name}' must be initialized"
-                )
+                raise SemanticError(f"const variable '{var_name}' must be initialized")
             self.current_scope.declare(Symbol(var_name, UNKNOWN, decl_kind))
             return
 
@@ -149,7 +150,7 @@ class SemanticAnalyzer:
         cond_type = self.analyze(node)
         if not is_bool_or_unknown(cond_type):
             raise SemanticError(
-                f"Semantic error: {construct} condition must be boolean, got {cond_type}"
+                f"{construct} condition must be boolean, got {cond_type}", node.line, node.col
             )
 
     def visit_If(self, node: ASTNode) -> None:
@@ -192,7 +193,7 @@ class SemanticAnalyzer:
 
     def visit_Return(self, node: ASTNode) -> str:
         if not self.in_function:
-            raise SemanticError("Semantic error: return statement outside function")
+            raise SemanticError("return statement outside function")
         if node.children:
             return self.analyze(node.children[0])
         return "null"
@@ -201,7 +202,7 @@ class SemanticAnalyzer:
     def visit_Identifier(self, node: ASTNode) -> str:
         symbol = self.current_scope.lookup(node.value)
         if symbol is None:
-            raise SemanticError(f"Semantic error: variable '{node.value}' used before declaration")
+            raise SemanticError(f"variable '{node.value}' used before declaration")
         return symbol.var_type
 
     def visit_Literal(self, node: ASTNode) -> str:
@@ -211,16 +212,12 @@ class SemanticAnalyzer:
         op = node.value
         left, right = node.children
         if left.kind != "Identifier":
-            raise SemanticError("Semantic error: invalid assignment target")
+            raise SemanticError("invalid assignment target")
         symbol = self.current_scope.lookup(left.value)
         if symbol is None:
-            raise SemanticError(
-                f"Semantic error: variable '{left.value}' assigned before declaration"
-            )
+            raise SemanticError(f"variable '{left.value}' assigned before declaration")
         if symbol.kind == "const":
-            raise SemanticError(
-                f"Semantic error: const variable '{left.value}' cannot be reassigned"
-            )
+            raise SemanticError(f"const variable '{left.value}' cannot be reassigned")
 
         right_type = self.analyze(right)
         if op == "=":
@@ -228,8 +225,7 @@ class SemanticAnalyzer:
                 symbol.var_type = right_type
             elif not compatible_types(symbol.var_type, right_type):
                 raise SemanticError(
-                    f"Semantic error: cannot assign {right_type} to '{left.value}' "
-                    f"of type {symbol.var_type}"
+                    f"cannot assign {right_type} to '{left.value}' of type {symbol.var_type}"
                 )
             symbol.initialized = True
             return symbol.var_type
@@ -248,23 +244,19 @@ class SemanticAnalyzer:
 
         if op in COMPARISON_OPS:
             if not (is_numeric_or_unknown(left_type) and is_numeric_or_unknown(right_type)):
-                raise SemanticError(
-                    f"Semantic error: comparison operator '{op}' requires numeric operands"
-                )
+                raise SemanticError(f"comparison operator '{op}' requires numeric operands")
             return "bool"
 
         if op in EQUALITY_OPS:
             if not (
                 compatible_types(left_type, right_type) or compatible_types(right_type, left_type)
             ):
-                raise SemanticError(f"Semantic error: cannot compare {left_type} with {right_type}")
+                raise SemanticError(f"cannot compare {left_type} with {right_type}")
             return "bool"
 
         if op in LOGICAL_OPS:
             if not (is_bool_or_unknown(left_type) and is_bool_or_unknown(right_type)):
-                raise SemanticError(
-                    f"Semantic error: logical operator '{op}' requires boolean operands"
-                )
+                raise SemanticError(f"logical operator '{op}' requires boolean operands")
             return "bool"
 
         return UNKNOWN
@@ -276,20 +268,20 @@ class SemanticAnalyzer:
 
         if op == "!":
             if not is_bool_or_unknown(expr_type):
-                raise SemanticError("Semantic error: '!' operator requires boolean operand")
+                raise SemanticError("'!' operator requires boolean operand")
             return "bool"
 
         if op == "-":
             if not is_numeric_or_unknown(expr_type):
-                raise SemanticError("Semantic error: unary '-' requires numeric operand")
+                raise SemanticError("unary '-' requires numeric operand")
             return expr_type
 
         if op in ("++", "--"):
             if expr.kind != "Identifier":
-                raise SemanticError(f"Semantic error: '{op}' requires a variable")
+                raise SemanticError(f"'{op}' requires a variable")
             self.lookup_mutable(expr.value, op)
             if not is_numeric_or_unknown(expr_type):
-                raise SemanticError(f"Semantic error: '{op}' requires numeric operand")
+                raise SemanticError(f"'{op}' requires numeric operand")
             return expr_type
         return None
 
@@ -298,20 +290,20 @@ class SemanticAnalyzer:
         expr = node.children[0]
         expr_type = self.analyze(expr)
         if expr.kind != "Identifier":
-            raise SemanticError(f"Semantic error: postfix '{op}' requires a variable")
+            raise SemanticError(f"postfix '{op}' requires a variable")
         self.lookup_mutable(expr.value, op)
         if not is_numeric_or_unknown(expr_type):
-            raise SemanticError(f"Semantic error: postfix '{op}' requires numeric operand")
+            raise SemanticError(f"postfix '{op}' requires numeric operand")
         return expr_type
 
     def visit_Call(self, node: ASTNode) -> str:
         callee, args_node = node.children
         symbol = self.current_scope.lookup(callee.value)
         if symbol is None or symbol.kind != "function":
-            raise SemanticError(f"Semantic error: '{callee.value}' is not a declared function")
+            raise SemanticError(f"'{callee.value}' is not a declared function")
         if symbol.params is not None and len(args_node.children) != len(symbol.params):
             raise SemanticError(
-                f"Semantic error: function '{callee.value}' expects {len(symbol.params)} "
+                f"function '{callee.value}' expects {len(symbol.params)} "
                 f"argument(s), got {len(args_node.children)}"
             )
         for arg in args_node.children:
