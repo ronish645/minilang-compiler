@@ -7,6 +7,9 @@ Functions capture the environment they were defined in (a closure), and
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,14 +65,49 @@ class UserFunction:
     closure: Environment
 
 
+@dataclass(frozen=True)
+class RuntimeLimits:
+    """Resource limits that stop runaway programs (e.g. untrusted LLM output)."""
+
+    max_steps: int = 1_000_000  # statements executed
+    max_call_depth: int = 500  # nested MiniLang function calls
+    max_output_lines: int = 10_000
+
+
+# Each MiniLang call nests ~10 Python frames (measured: exec -> eval -> call
+# -> ...), more inside nested statements; 30 leaves headroom.
+# The Python limit is raised during a run so max_call_depth is reachable.
+PYTHON_FRAMES_PER_CALL = 30
+
+
+@contextmanager
+def python_recursion_limit(minimum: int) -> Iterator[None]:
+    previous = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(previous, minimum))
+    try:
+        yield
+    finally:
+        sys.setrecursionlimit(previous)
+
+
 class MiniRuntime:
-    def __init__(self) -> None:
+    def __init__(self, limits: RuntimeLimits | None = None) -> None:
+        self.limits = limits or RuntimeLimits()
         self.global_env = Environment()
         self.output: list[str] = []
+        self.steps = 0
+        self.call_depth = 0
 
     def run(self, node: ASTNode) -> list[str]:
         try:
-            self.exec_stmt(node, self.global_env)
+            with python_recursion_limit(self.limits.max_call_depth * PYTHON_FRAMES_PER_CALL):
+                self.exec_stmt(node, self.global_env)
+        except RecursionError as exc:
+            # Safety net for deeply nested *expressions*, which the call-depth
+            # limit doesn't cover.
+            error = MiniLangRuntimeError("program nesting is too deep")
+            error.partial_output = list(self.output)
+            raise error from exc
         except MiniLangRuntimeError as error:
             error.partial_output = list(self.output)
             raise
@@ -80,6 +118,14 @@ class MiniRuntime:
         method = getattr(self, f"exec_{node.kind}", None)
         if method is None:
             raise MiniLangRuntimeError(f"unsupported statement '{node.kind}'")
+        self.steps += 1
+        if self.steps > self.limits.max_steps:
+            raise MiniLangRuntimeError(
+                f"step limit exceeded ({self.limits.max_steps} statements); "
+                "is there an infinite loop?",
+                node.line,
+                node.col,
+            )
         try:
             method(node, env)
         except MiniLangRuntimeError as error:
@@ -101,6 +147,10 @@ class MiniRuntime:
         env.define(name, value, mutable=(node.value != "const"))
 
     def exec_Print(self, node: ASTNode, env: Environment) -> None:
+        if len(self.output) >= self.limits.max_output_lines:
+            raise MiniLangRuntimeError(
+                f"output limit exceeded ({self.limits.max_output_lines} lines)"
+            )
         self.output.append(format_value(self.eval_expr(node.children[0], env)))
 
     def exec_ExpressionStatement(self, node: ASTNode, env: Environment) -> None:
@@ -206,11 +256,19 @@ class MiniRuntime:
             raise MiniLangRuntimeError(
                 f"function '{func.name}' expects {len(func.params)} argument(s), got {len(args)}"
             )
+        if self.call_depth >= self.limits.max_call_depth:
+            raise MiniLangRuntimeError(
+                f"maximum call depth exceeded ({self.limits.max_call_depth}) "
+                f"in '{func.name}'; is the recursion missing a base case?"
+            )
         call_env = Environment(func.closure)
         for name, value in zip(func.params, args, strict=True):
             call_env.define(name, value)
+        self.call_depth += 1
         try:
             self.exec_stmt(func.body, call_env)
         except ReturnSignal as signal:
             return signal.value
+        finally:
+            self.call_depth -= 1
         return None
