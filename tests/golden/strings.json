@@ -1,0 +1,51 @@
+{
+  "tokens": [
+    "KW('const')@2:1",
+    "IDENT('greeting')@2:7",
+    "OP('=')@2:16",
+    "STRING('hello')@2:18",
+    "SEP(';')@2:25",
+    "KW('print')@3:1",
+    "SEP('(')@3:6",
+    "IDENT('greeting')@3:7",
+    "SEP(')')@3:15",
+    "SEP(';')@3:16",
+    "KW('print')@4:1",
+    "SEP('(')@4:6",
+    "STRING('single quoted')@4:7",
+    "SEP(')')@4:22",
+    "SEP(';')@4:23",
+    "KW('print')@5:1",
+    "SEP('(')@5:6",
+    "STRING('tab\\there')@5:7",
+    "SEP(')')@5:18",
+    "SEP(';')@5:19",
+    "KW('print')@6:1",
+    "SEP('(')@6:6",
+    "STRING(\"it's\")@6:7",
+    "SEP(')')@6:14",
+    "SEP(';')@6:15",
+    "EOF('')@7:1"
+  ],
+  "ast": "Program\n  VarDecl: const\n    Identifier: greeting\n    Literal: hello\n  Print\n    Identifier: greeting\n  Print\n    Literal: single quoted\n  Print\n    Literal: tab\there\n  Print\n    Literal: it's\n",
+  "three_address_code": [
+    "greeting = 'hello'",
+    "print greeting",
+    "print 'single quoted'",
+    "print 'tab\\there'",
+    "print \"it's\""
+  ],
+  "pseudo_code": [
+    "STORE greeting, 'hello'",
+    "PRINT greeting",
+    "PRINT 'single quoted'",
+    "PRINT 'tab\\there'",
+    "PRINT \"it's\""
+  ],
+  "execution_output": [
+    "hello",
+    "single quoted",
+    "tab\there",
+    "it's"
+  ]
+}
