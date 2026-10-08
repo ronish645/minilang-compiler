@@ -452,3 +452,181 @@ tasks:
       print(repeat("xyz", 2));
       print(3);
       print(repeat("-", 3));
+
+  # ---------------------------------------------------------------- tier 4
+  # Harder compositions of the tier-3 traps. Added after the first run showed
+  # frontier models saturating tiers 1-3 (see bench/README.md).
+
+  - id: sum_label
+    tier: 4
+    prompt: >-
+      Compute the sum of the integers from 1 to 100 and print it on a single line
+      in the form Sum = <total>.
+    expected: |
+      Sum = 5050
+    reference: |
+      // No int-to-string conversion: build the text digit by digit.
+      fn digitText(d) {
+          if (d == 0) { return "0"; } if (d == 1) { return "1"; }
+          if (d == 2) { return "2"; } if (d == 3) { return "3"; }
+          if (d == 4) { return "4"; } if (d == 5) { return "5"; }
+          if (d == 6) { return "6"; } if (d == 7) { return "7"; }
+          if (d == 8) { return "8"; }
+          return "9";
+      }
+      fn toText(n) {
+          if (n == 0) { return "0"; }
+          let s = "";
+          while (n > 0) {
+              let d = n % 10;
+              s = digitText(d) + s;
+              n = (n - d) / 10;
+          }
+          return s;
+      }
+      let total = 0;
+      for (let i = 1; i <= 100; i++) { total += i; }
+      print("Sum = " + toText(total));
+
+  - id: countdown_line
+    tier: 4
+    prompt: Print the numbers 5 down to 1 followed by the word liftoff, all on one line separated by single spaces.
+    expected: |
+      5 4 3 2 1 liftoff
+    reference: |
+      fn digitText(d) {
+          if (d == 1) { return "1"; } if (d == 2) { return "2"; }
+          if (d == 3) { return "3"; } if (d == 4) { return "4"; }
+          return "5";
+      }
+      let line = "";
+      for (let i = 5; i >= 1; i--) { line = line + digitText(i) + " "; }
+      print(line + "liftoff");
+
+  - id: clock
+    tier: 4
+    prompt: >-
+      Convert 3725 seconds to hours, minutes and seconds and print it on one line as
+      H:MM:SS, with minutes and seconds zero-padded to two digits.
+    expected: |
+      1:02:05
+    reference: |
+      fn digitText(d) {
+          if (d == 0) { return "0"; } if (d == 1) { return "1"; }
+          if (d == 2) { return "2"; } if (d == 3) { return "3"; }
+          if (d == 4) { return "4"; } if (d == 5) { return "5"; }
+          if (d == 6) { return "6"; } if (d == 7) { return "7"; }
+          if (d == 8) { return "8"; }
+          return "9";
+      }
+      fn twoDigits(n) {
+          let tens = 0;
+          while (n >= 10) { n -= 10; tens++; }
+          return digitText(tens) + digitText(n);
+      }
+      let s = 3725;
+      let h = 0;
+      while (s >= 3600) { s -= 3600; h++; }
+      let m = 0;
+      while (s >= 60) { s -= 60; m++; }
+      print(digitText(h) + ":" + twoDigits(m) + ":" + twoDigits(s));
+
+  - id: nth_prime
+    tier: 4
+    prompt: Print the 15th prime number (the 1st prime is 2).
+    expected: |
+      47
+    reference: |
+      fn isPrime(n) {
+          if (n < 2) { return false; }
+          let d = 2;
+          let prime = true;
+          while (d * d <= n && prime) {
+              if (n % d == 0) { prime = false; }
+              d++;
+          }
+          return prime;
+      }
+      let found = 0;
+      let candidate = 1;
+      while (found < 15) {
+          candidate++;
+          if (isPrime(candidate)) { found++; }
+      }
+      print(candidate);
+
+  - id: sorted_three
+    tier: 4
+    prompt: >-
+      Sort the numbers 7, 2 and 5 in ascending order without arrays and print them on
+      one line as 2 <= 5 <= 7.
+    expected: |
+      2 <= 5 <= 7
+    reference: |
+      fn digitText(d) {
+          if (d == 2) { return "2"; } if (d == 5) { return "5"; }
+          return "7";
+      }
+      let a = 7;
+      let b = 2;
+      let c = 5;
+      let t = 0;
+      if (a > b) { t = a; a = b; b = t; }
+      if (b > c) { t = b; b = c; c = t; }
+      if (a > b) { t = a; a = b; b = t; }
+      print(digitText(a) + " <= " + digitText(b) + " <= " + digitText(c));
+
+  - id: roman
+    tier: 4
+    prompt: Print 1994 in Roman numerals.
+    expected: |
+      MCMXCIV
+    reference: |
+      fn take(n, value) {
+          // how many times value fits in n, by subtraction
+          let count = 0;
+          while (n >= value) { n -= value; count++; }
+          return count;
+      }
+      fn repeat(s, times) {
+          let out = "";
+          for (let i = 0; i < times; i++) { out = out + s; }
+          return out;
+      }
+      let n = 1994;
+      let out = "";
+      let k = take(n, 1000); out = out + repeat("M", k); n -= k * 1000;
+      k = take(n, 900); out = out + repeat("CM", k); n -= k * 900;
+      k = take(n, 500); out = out + repeat("D", k); n -= k * 500;
+      k = take(n, 400); out = out + repeat("CD", k); n -= k * 400;
+      k = take(n, 100); out = out + repeat("C", k); n -= k * 100;
+      k = take(n, 90); out = out + repeat("XC", k); n -= k * 90;
+      k = take(n, 50); out = out + repeat("L", k); n -= k * 50;
+      k = take(n, 40); out = out + repeat("XL", k); n -= k * 40;
+      k = take(n, 10); out = out + repeat("X", k); n -= k * 10;
+      k = take(n, 9); out = out + repeat("IX", k); n -= k * 9;
+      k = take(n, 5); out = out + repeat("V", k); n -= k * 5;
+      k = take(n, 4); out = out + repeat("IV", k); n -= k * 4;
+      out = out + repeat("I", n);
+      print(out);
+
+  - id: collatz_peak
+    tier: 4
+    prompt: >-
+      Starting from 27, apply the Collatz rule (n / 2 if even, else 3n + 1) until n
+      reaches 1, and print the largest value n takes along the way as an integer.
+    expected: |
+      9232
+    reference: |
+      fn half(n) {
+          let q = 0;
+          while (n >= 2) { n -= 2; q++; }
+          return q;
+      }
+      let n = 27;
+      let peak = n;
+      while (n != 1) {
+          if (n % 2 == 0) { n = half(n); } else { n = 3 * n + 1; }
+          if (n > peak) { peak = n; }
+      }
+      print(peak);

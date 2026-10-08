@@ -10,7 +10,7 @@ import yaml
 from bench.config import BENCH_DIR
 
 DEFAULT_TASKS_FILE = BENCH_DIR / "tasks.yaml"
-VALID_TIERS = (1, 2, 3)
+VALID_TIERS = (1, 2, 3, 4)
 
 
 @dataclass(frozen=True)

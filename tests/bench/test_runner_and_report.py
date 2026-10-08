@@ -106,6 +106,16 @@ class TestStatistics:
         assert repair_rate(episodes) == Rate(1, 2)
         assert pass_rate(episodes) == Rate(3, 4)
 
+    def test_tested_rate_counts_tool_episodes_that_ran_code(self):
+        from bench.report import tested_rate
+
+        episodes = [
+            make_episode(runs=(True,)),
+            make_episode(runs=()),
+            make_episode(condition=ONESHOT),  # no tools: excluded
+        ]
+        assert tested_rate(episodes) == Rate(1, 2)
+
 
 def test_report_excludes_api_errors_and_has_all_sections():
     episodes = [

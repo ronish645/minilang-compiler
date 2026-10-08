@@ -19,8 +19,8 @@ def test_reference_solution_produces_expected_output(task):
 
 
 def test_task_suite_shape():
-    assert len(TASKS) == 25
-    assert {t.tier for t in TASKS} == {1, 2, 3}
+    assert len(TASKS) == 32
+    assert {t.tier for t in TASKS} == {1, 2, 3, 4}
 
 
 def test_user_message_shows_expected_output_but_not_reference():

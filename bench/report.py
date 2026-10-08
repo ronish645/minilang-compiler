@@ -12,6 +12,9 @@ repair rate   of the episodes whose *first* run failed, the share that still
               ended up passing. This isolates how useful the error feedback
               was, which is the point of comparing conditions.
 first-run ok  share of tool episodes whose first run_minilang call succeeded.
+tested        share of tool episodes where the model ran its code at least
+              once before submitting (feedback can't help a model that
+              never asks for it).
 95% CI        Wilson score interval; with ~25 tasks per cell, differences
               smaller than the intervals are not meaningful.
 """
@@ -79,6 +82,11 @@ def repair_rate(episodes: Iterable[Episode]) -> Rate:
 
 def first_run_ok(episodes: Iterable[Episode]) -> Rate:
     return rate([e for e in episodes if e.runs], lambda e: e.runs[0].ok)
+
+
+def tested_rate(episodes: Iterable[Episode]) -> Rate:
+    tool_episodes = [e for e in episodes if e.condition in TOOL_CONDITIONS]
+    return rate(tool_episodes, lambda e: bool(e.runs))
 
 
 def load_episodes(path: Path) -> list[Episode]:
@@ -151,6 +159,7 @@ def section_cost(episodes: list[Episode], models: list[str], configs: dict) -> s
         rows.append(
             [
                 m,
+                tested_rate(mine).format(),
                 first_run_ok(mine).format(),
                 f"{sum(runs) / len(runs):.1f}" if runs else "–",
                 f"{sum(e.seconds for e in mine) / len(mine):.1f}s",
@@ -158,7 +167,15 @@ def section_cost(episodes: list[Episode], models: list[str], configs: dict) -> s
                 f"${cost / solved:.4f}" if solved else "–",
             ]
         )
-    headers = ["Model", "First run ok", "Avg runs", "Avg time", "Total cost", "Cost per solve"]
+    headers = [
+        "Model",
+        "Tested first",
+        "First run ok",
+        "Avg runs",
+        "Avg time",
+        "Total cost",
+        "Cost per solve",
+    ]
     return "## Efficiency and cost\n\n" + table(headers, rows)
 
 
