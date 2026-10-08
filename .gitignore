@@ -6,7 +6,8 @@ build/
 dist/
 
 # Environments & secrets
-.venv/
+.venv
+.venv.nosync/
 .env
 
 # Tooling
