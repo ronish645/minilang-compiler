@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/ronish645/minilang-compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/ronish645/minilang-compiler/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
-![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
 ![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)
 
-A compiler for **MiniLang**, a small C/JavaScript-style language, written from scratch in Python with no parser generators and no runtime dependencies.
+A compiler for **MiniLang**, a small C/JavaScript-style language, written from scratch in Python with no parser generators and no runtime dependencies. It's also an **LLM benchmark**: since no model has seen MiniLang before, it measures whether Claude, GPT and open models can learn a new language from its spec and fix their own code using compiler feedback.
 
 ```
 source ─▶ Lexer ─▶ Parser ─▶ Semantic Analyzer ─┬─▶ Code Generator  (three-address code + pseudo-assembly)
@@ -96,6 +96,35 @@ print 'small value'
 label ENDIF2
 ```
 
+## LLM benchmark
+
+[`bench/`](bench/) runs models in an agent loop: they get the [language spec](docs/LANGUAGE_SPEC.md) and a task, call the compiler as a tool (`run_minilang`), and submit a program, which is graded by exact output. Four conditions vary only what the compiler says when code fails, from nothing (`oneshot`) to a one-line "failed" (`opaque`) to the full positioned diagnostic. Methodology and discussion: [bench/README.md](bench/README.md).
+
+**Results** (640 episodes, 32 tasks, about $1.30 in API cost):
+
+| Model | Pass rate | One-shot (can't run code) | Tested before submitting | Cost per solve |
+|---|---|---|---|---|
+| Claude Haiku 5.5 | **100%** | 32/32 | 97% | $0.0005 |
+| GPT-6 Luna | **100%** | 32/32 | 100% | $0.0002 |
+| GPT-6.1 Sol | **100%** | 32/32 | 100% | $0.0025 |
+| Claude Sonnet 5.5 | 98% | 32/32 | 35% | $0.0070 |
+| Qwen 2.5 3B (local) | 32% | 9/32 | 73% | free |
+
+- Frontier models learned the language from the spec alone, including tasks designed around its differences from JavaScript and Python.
+- Error-message quality had **no measurable effect**. Frontier models fixed every failure even with "the program failed", and the 3B model rarely fixed anything with any feedback.
+- Every frontier-model failure was an **untested submission**.
+
+The harness supports the Anthropic Messages API, the OpenAI Responses API and local models through Ollama, behind one adapter interface, with prompt caching, a resumable episode cache and a dry-run cost estimate.
+
+## MCP server
+
+`minilang-mcp` exposes the compiler to AI assistants over the [Model Context Protocol](https://modelcontextprotocol.io): `run_program`, `check_program` and `compile_program` tools, plus the spec as the `minilang://spec` resource.
+
+```bash
+pip install -e ".[mcp]"
+minilang-mcp            # stdio server; register this command in Claude Desktop / Claude Code
+```
+
 ## Design decisions
 
 - **Gradual typing.** Literal and variable types are checked before running. Function parameters are typed `unknown` and checked at run time, so `fn isEven(n) { return n % 2 == 0; }` type-checks without type annotations.
@@ -106,7 +135,7 @@ label ENDIF2
 ## Testing
 
 ```bash
-pytest --cov          # 200+ tests, 98% coverage
+pytest --cov          # 300+ tests, 97% coverage
 ruff check . && ruff format --check .
 ```
 
@@ -117,17 +146,20 @@ ruff check . && ruff format --check .
 
 ## Roadmap
 
-- [x] Package refactor, positioned errors, CLI, runtime limits, 98% test coverage, CI
-- [ ] **LLM benchmark:** can models from Anthropic, OpenAI and open source write correct code in a language they have never seen, using compiler errors as feedback?
-- [ ] MCP server exposing the compiler as tools for AI assistants
+- [x] Package refactor, positioned errors, CLI, runtime limits, CI
+- [x] Multi-provider LLM benchmark with feedback-quality experiment
+- [x] MCP server exposing the compiler as tools for AI assistants
+- [ ] Benchmark mid-size open models (7–14B), where error quality is most likely to matter
+- [ ] Web playground showing every compiler stage
 
 ## Repository layout
 
 ```
-minilang/        compiler package (one module per stage)
-tests/           unit, golden, regression, CLI and docs tests
+minilang/        compiler package (one module per stage) + MCP server
+bench/           LLM benchmark: tasks, agent loop, provider adapters, runner, report
+tests/           unit, golden, regression, CLI, docs, MCP and benchmark tests
 examples/        sample programs
-docs/            language specification
+docs/            language specification and build notes
 ```
 
 Originally built for CS 453 (Compiler Design) at San Francisco Bay University, then rebuilt as a tested, packaged tool.

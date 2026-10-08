@@ -1,0 +1,43 @@
+# Models in the benchmark. A model is skipped (with a warning) when its
+# provider's API key is missing. Prices are USD per 1M tokens and are only
+# used for cost reporting; check them against each provider's pricing page.
+#
+# Tiers are matched on price so comparisons are fair:
+#   small: claude-haiku vs gpt-luna ($0.10 / $0.50)
+#   mid:   claude-sonnet vs gpt-sol ($2 / $10)
+
+models:
+  - id: claude-haiku
+    provider: anthropic
+    model: claude-haiku-5-5
+    tier: small
+    effort: medium      # output_config.effort; same level for every model
+    price: { input: 0.10, output: 0.50 }
+
+  - id: claude-sonnet
+    provider: anthropic
+    model: claude-sonnet-5-5
+    tier: mid
+    effort: medium
+    price: { input: 2.00, output: 10.00 }
+
+  - id: gpt-luna
+    provider: openai
+    model: gpt-6-luna
+    tier: small
+    effort: medium      # Responses API reasoning.effort
+    price: { input: 0.10, output: 0.50 }
+
+  - id: gpt-sol
+    provider: openai
+    model: gpt-6.1-sol
+    tier: mid
+    effort: medium
+    price: { input: 2.00, output: 10.00 }
+
+  - id: qwen-3b-local
+    provider: ollama
+    model: qwen2.5:3b
+    tier: local
+    max_concurrency: 1   # one local GPU/CPU: run sequentially
+    price: { input: 0, output: 0 }

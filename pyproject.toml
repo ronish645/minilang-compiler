@@ -20,6 +20,7 @@ mcp = ["mcp>=1.2"]
 
 [project.scripts]
 minilang = "minilang.cli:main"
+minilang-mcp = "minilang.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["minilang*"]
@@ -29,8 +30,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["minilang"]
-omit = ["minilang/mcp_server.py"]
+source = ["minilang", "bench"]
 
 [tool.coverage.report]
 fail_under = 80
