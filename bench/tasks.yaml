@@ -1,13 +1,15 @@
 # Benchmark tasks. Each task states the exact expected output (the model
 # sees it, like a test case) and carries a hidden reference solution that
-# tests/bench/test_tasks.py runs to prove the task is solvable.
+# tests/bench/test_tasks_and_config.py runs to prove the task is solvable.
 #
 # Tiers:
 #   1 basics      - loops, conditionals, functions
 #   2 algorithms  - classic small programs
-#   3 spec traps  - only solvable by respecting MiniLang's differences from
-#                   JS/Python: no break, `/` always yields a float, `&&` does
-#                   not short-circuit, no int-to-string conversion
+#   3 spec traps  - written for MiniLang v1 (no break, no int-to-string, no
+#                   short-circuit); in v2 the float-division and fixed-type
+#                   traps remain
+#   4 combined    - harder compositions of the tier-3 traps
+#   5 programs    - multi-step programs with arrays and strings (v2)
 
 tasks:
   # ---------------------------------------------------------------- tier 1
@@ -630,3 +632,240 @@ tasks:
           if (n > peak) { peak = n; }
       }
       print(peak);
+
+  # ---------------------------------------------------------------- tier 5
+  # Multi-step programs using arrays and strings (MiniLang v2). Larger
+  # programs give frontier models more chances to fail, which the repair
+  # experiment needs; several still hide v2 traps (float division as an
+  # index, no string comparison, no methods, quoted strings inside arrays).
+
+  - id: bubble_sort
+    tier: 5
+    prompt: >-
+      Sort the array [5, 2, 9, 1, 7, 3] in ascending order with bubble sort (no
+      built-in sort exists) and print the sorted array.
+    expected: |
+      [1, 2, 3, 5, 7, 9]
+    reference: |
+      let xs = [5, 2, 9, 1, 7, 3];
+      for (let i = 0; i < len(xs); i++) {
+          for (let j = 0; j < len(xs) - 1 - i; j++) {
+              if (xs[j] > xs[j + 1]) {
+                  let t = xs[j];
+                  xs[j] = xs[j + 1];
+                  xs[j + 1] = t;
+              }
+          }
+      }
+      print(xs);
+
+  - id: binary_search
+    tier: 5
+    prompt: >-
+      Write a function search(xs, target) that uses binary search on a sorted array
+      and returns the target's index, or -1 if it is absent. With
+      xs = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91], print search(xs, 23), then
+      search(xs, 7), then search(xs, 91).
+    expected: |
+      5
+      -1
+      9
+    reference: |
+      fn search(xs, target) {
+          let lo = 0;
+          let hi = len(xs) - 1;
+          while (lo <= hi) {
+              let mid = int((lo + hi) / 2);  // '/' gives a float; indexes must be ints
+              if (xs[mid] == target) { return mid; }
+              if (xs[mid] < target) { lo = mid + 1; } else { hi = mid - 1; }
+          }
+          return -1;
+      }
+      let xs = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91];
+      print(search(xs, 23));
+      print(search(xs, 7));
+      print(search(xs, 91));
+
+  - id: run_length
+    tier: 5
+    prompt: >-
+      Run-length encode the string "aaabccddddd": each run of a repeated character
+      becomes the character followed by the run length. Print the encoded string.
+    expected: |
+      a3b1c2d5
+    reference: |
+      let s = "aaabccddddd";
+      let out = "";
+      let i = 0;
+      while (i < len(s)) {
+          let j = i;
+          while (j < len(s) && s[j] == s[i]) { j++; }
+          out = out + s[i] + str(j - i);
+          i = j;
+      }
+      print(out);
+
+  - id: reverse_words
+    tier: 5
+    prompt: >-
+      Reverse the order of the words in "the quick brown fox jumps" (words are
+      separated by single spaces) and print the resulting sentence.
+    expected: |
+      jumps fox brown quick the
+    reference: |
+      let s = "the quick brown fox jumps";
+      let words = [];
+      let word = "";
+      for (let i = 0; i < len(s); i++) {
+          if (s[i] == " ") { push(words, word); word = ""; } else { word = word + s[i]; }
+      }
+      push(words, word);
+      let out = "";
+      for (let i = len(words) - 1; i >= 0; i--) {
+          out = out + words[i];
+          if (i > 0) { out = out + " "; }
+      }
+      print(out);
+
+  - id: balanced_brackets
+    tier: 5
+    prompt: >-
+      Write a function balanced(s) that returns true when every bracket in s ((), [],
+      {}) is closed in the correct order, using an array as a stack. Print
+      balanced("(()[]{})"), balanced("([)]"), balanced("(("), balanced("())").
+    expected: |
+      true
+      false
+      false
+      false
+    reference: |
+      fn matches(open, close) {
+          return (open == "(" && close == ")") || (open == "[" && close == "]")
+              || (open == "{" && close == "}");
+      }
+      fn balanced(s) {
+          let stack = [];
+          for (let i = 0; i < len(s); i++) {
+              let c = s[i];
+              if (c == "(" || c == "[" || c == "{") {
+                  push(stack, c);
+              } else {
+                  if (len(stack) == 0) { return false; }
+                  if (!matches(pop(stack), c)) { return false; }
+              }
+          }
+          return len(stack) == 0;
+      }
+      print(balanced("(()[]{})"));
+      print(balanced("([)]"));
+      print(balanced("(("));
+      print(balanced("())"));
+
+  - id: matrix_multiply
+    tier: 5
+    prompt: >-
+      Multiply the 2x2 matrices [[1, 2], [3, 4]] and [[5, 6], [7, 8]] (nested arrays,
+      rows first) and print each row of the result as an array on its own line.
+    expected: |
+      [19, 22]
+      [43, 50]
+    reference: |
+      let a = [[1, 2], [3, 4]];
+      let b = [[5, 6], [7, 8]];
+      for (let i = 0; i < 2; i++) {
+          let row = [];
+          for (let j = 0; j < 2; j++) {
+              let sum = 0;
+              for (let k = 0; k < 2; k++) { sum += a[i][k] * b[k][j]; }
+              push(row, sum);
+          }
+          print(row);
+      }
+
+  - id: sieve
+    tier: 5
+    prompt: >-
+      Use the Sieve of Eratosthenes to find all primes below 50 and print them as a
+      single array.
+    expected: |
+      [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
+    reference: |
+      let n = 50;
+      let isPrime = [];
+      for (let i = 0; i < n; i++) { push(isPrime, i >= 2); }
+      for (let p = 2; p * p < n; p++) {
+          if (isPrime[p]) {
+              for (let m = p * p; m < n; m += p) { isPrime[m] = false; }
+          }
+      }
+      let primes = [];
+      for (let i = 0; i < n; i++) { if (isPrime[i]) { push(primes, i); } }
+      print(primes);
+
+  - id: caesar
+    tier: 5
+    prompt: >-
+      Encrypt "hello world" with a Caesar cipher that shifts each lowercase letter 3
+      places forward in the alphabet (wrapping z to c) and leaves spaces unchanged.
+      Print the result. MiniLang has no character codes.
+    expected: |
+      khoor zruog
+    reference: |
+      let alphabet = "abcdefghijklmnopqrstuvwxyz";
+      fn indexOf(c) {
+          for (let i = 0; i < len(alphabet); i++) { if (alphabet[i] == c) { return i; } }
+          return -1;
+      }
+      let s = "hello world";
+      let out = "";
+      for (let i = 0; i < len(s); i++) {
+          let k = indexOf(s[i]);
+          if (k == -1) { out = out + s[i]; } else { out = out + alphabet[(k + 3) % 26]; }
+      }
+      print(out);
+
+  - id: anagrams
+    tier: 5
+    prompt: >-
+      Write a function isAnagram(a, b) for lowercase words that returns true when b
+      uses exactly the same letters as a. Strings cannot be compared with < in
+      MiniLang. Print isAnagram("listen", "silent"), isAnagram("apple", "papel"),
+      isAnagram("rat", "car").
+    expected: |
+      true
+      true
+      false
+    reference: |
+      let alphabet = "abcdefghijklmnopqrstuvwxyz";
+      fn counts(word) {
+          let c = [];
+          for (let i = 0; i < 26; i++) { push(c, 0); }
+          for (let i = 0; i < len(word); i++) {
+              for (let k = 0; k < 26; k++) { if (alphabet[k] == word[i]) { c[k]++; } }
+          }
+          return c;
+      }
+      fn isAnagram(a, b) { return counts(a) == counts(b); }
+      print(isAnagram("listen", "silent"));
+      print(isAnagram("apple", "papel"));
+      print(isAnagram("rat", "car"));
+
+  - id: pascal
+    tier: 5
+    prompt: Print the first 6 rows of Pascal's triangle, each row as an array.
+    expected: |
+      [1]
+      [1, 1]
+      [1, 2, 1]
+      [1, 3, 3, 1]
+      [1, 4, 6, 4, 1]
+      [1, 5, 10, 10, 5, 1]
+    reference: |
+      let row = [1];
+      for (let r = 0; r < 6; r++) {
+          print(row);
+          let next = [1];
+          for (let i = 1; i < len(row); i++) { push(next, row[i - 1] + row[i]); }
+          push(next, 1);
+          row = next;
+      }

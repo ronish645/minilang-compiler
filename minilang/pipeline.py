@@ -57,14 +57,18 @@ class RunResult:
     ok: bool
     output: list[str] = field(default_factory=list)
     error: dict[str, Any] | None = None  # MiniLangError.to_dict()
-    diagnostic: str | None = None  # human-readable error with source snippet
+    diagnostic: str | None = None  # every error, with source snippets and hints
+    # The original exception, for callers that render it differently (not serialized).
+    exception: MiniLangError | None = field(default=None, repr=False, compare=False)
 
     @property
     def is_compile_error(self) -> bool:
         return self.error is not None and self.error["stage"] != "runtime"
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        del data["exception"]
+        return data
 
 
 def run_source(
@@ -81,4 +85,5 @@ def run_source(
             output=partial,
             error=error.to_dict(),
             diagnostic=format_diagnostic(error, source, filename),
+            exception=error,
         )
