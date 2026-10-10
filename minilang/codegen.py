@@ -8,6 +8,9 @@ one operator, e.g. ``a = b + c * d`` becomes::
     a = t2
 
 Control flow is lowered to labels and conditional jumps (``if_false ... goto``).
+``&&`` / ``||`` become jumps too, so the right side is skipped when the left
+already decides the result (short-circuit evaluation). Array elements are
+addressed as ``xs[i]`` in both reads and writes.
 """
 
 from __future__ import annotations
@@ -36,12 +39,26 @@ def op_to_instr(op: str) -> str:
     return OP_INSTRUCTIONS.get(op, f"OP_{op}")
 
 
+class LoopLabels:
+    def __init__(self, generator: CodeGenerator, end: str, continue_target: str | None):
+        self.generator = generator
+        self.end = end
+        self.continue_target = continue_target  # None: allocated on first use (for loops)
+
+    def continue_label(self) -> str:
+        if self.continue_target is None:
+            self.continue_target = self.generator.new_label("NEXT")
+        return self.continue_target
+
+
 class CodeGenerator:
     def __init__(self) -> None:
         self.tac: list[str] = []
         self.pseudo: list[str] = []
         self.temp_count = 0
         self.label_count = 0
+        # Innermost-last stack of enclosing loops: jump targets for break/continue.
+        self.loops: list[LoopLabels] = []
 
     def new_temp(self) -> str:
         self.temp_count += 1
@@ -64,6 +81,16 @@ class CodeGenerator:
 
     def emit_jump_if_false(self, cond: str, label: str) -> None:
         self.emit(f"if_false {cond} goto {label}", f"JZ {cond}, {label}")
+
+    def emit_jump_if_true(self, cond: str, label: str) -> None:
+        self.emit(f"if_true {cond} goto {label}", f"JNZ {cond}, {label}")
+
+    def visit_loop_body(self, body: ASTNode, labels: LoopLabels) -> None:
+        self.loops.append(labels)
+        try:
+            self.visit(body)
+        finally:
+            self.loops.pop()
 
     def generate(self, node: ASTNode) -> tuple[list[str], list[str]]:
         self.visit(node)
@@ -111,7 +138,7 @@ class CodeGenerator:
         self.emit_label(start)
         cond = self.gen_expr(node.children[0])
         self.emit_jump_if_false(cond, end)
-        self.visit(node.children[1])
+        self.visit_loop_body(node.children[1], LoopLabels(self, end, start))
         self.emit_jump(start)
         self.emit_label(end)
 
@@ -124,7 +151,10 @@ class CodeGenerator:
         self.emit_label(start)
         if cond.kind != "EmptyCondition":
             self.emit_jump_if_false(self.gen_expr(cond), end)
-        self.visit(body)
+        labels = LoopLabels(self, end, None)
+        self.visit_loop_body(body, labels)
+        if labels.continue_target is not None:  # 'continue' jumps to the update
+            self.emit_label(labels.continue_target)
         if update.kind != "EmptyUpdate":
             self.gen_expr(update)
         self.emit_jump(start)
@@ -136,6 +166,12 @@ class CodeGenerator:
         self.emit(f"func {name}({params})", f"FUNC {name} {params}")
         self.visit(node.children[1])
         self.emit(f"endfunc {name}", f"END_FUNC {name}")
+
+    def visit_Break(self, node: ASTNode) -> None:
+        self.emit_jump(self.loops[-1].end)
+
+    def visit_Continue(self, node: ASTNode) -> None:
+        self.emit_jump(self.loops[-1].continue_label())
 
     def visit_Return(self, node: ASTNode) -> None:
         if node.children:
@@ -158,8 +194,31 @@ class CodeGenerator:
     def expr_Identifier(self, node: ASTNode) -> str:
         return node.value
 
+    def target_ref(self, target: ASTNode) -> str:
+        """How an assignable target is written: ``x`` or ``xs[t1]``."""
+        if target.kind == "Index":
+            base = self.gen_expr(target.children[0])
+            return f"{base}[{self.gen_expr(target.children[1])}]"
+        return target.value
+
+    def expr_ArrayLiteral(self, node: ASTNode) -> str:
+        temp = self.new_temp()
+        self.emit(
+            f"{temp} = newarray {len(node.children)}", f"NEWARRAY {len(node.children)} -> {temp}"
+        )
+        for i, element in enumerate(node.children):
+            value = self.gen_expr(element)
+            self.emit(f"{temp}[{i}] = {value}", f"STORE {temp}[{i}], {value}")
+        return temp
+
+    def expr_Index(self, node: ASTNode) -> str:
+        ref = self.target_ref(node)
+        temp = self.new_temp()
+        self.emit(f"{temp} = {ref}", f"LOAD {ref} -> {temp}")
+        return temp
+
     def expr_Assign(self, node: ASTNode) -> str:
-        left = node.children[0].value
+        left = self.target_ref(node.children[0])
         right = self.gen_expr(node.children[1])
         op = node.value
         if op == "=":
@@ -171,7 +230,24 @@ class CodeGenerator:
         self.pseudo += [f"LOAD {left}", f"LOAD {right}", op_to_instr(base_op), f"STORE {left}"]
         return left
 
+    def short_circuit(self, node: ASTNode) -> str:
+        """a && b: if a is false the result is false and b never runs (|| mirrors it)."""
+        temp = self.new_temp()
+        end = self.new_label("SC_END")
+        left = self.gen_expr(node.children[0])
+        self.emit(f"{temp} = {left}", f"STORE {temp}, {left}")
+        if node.value == "&&":
+            self.emit_jump_if_false(temp, end)
+        else:
+            self.emit_jump_if_true(temp, end)
+        right = self.gen_expr(node.children[1])
+        self.emit(f"{temp} = {right}", f"STORE {temp}, {right}")
+        self.emit_label(end)
+        return temp
+
     def expr_BinaryOp(self, node: ASTNode) -> str:
+        if node.value in ("&&", "||"):
+            return self.short_circuit(node)
         left = self.gen_expr(node.children[0])
         right = self.gen_expr(node.children[1])
         temp = self.new_temp()
@@ -180,9 +256,9 @@ class CodeGenerator:
         return temp
 
     def expr_UnaryOp(self, node: ASTNode) -> str:
-        expr = self.gen_expr(node.children[0])
         op = node.value
-        if op in ("++", "--") and node.children[0].kind == "Identifier":
+        if op in ("++", "--"):
+            expr = self.target_ref(node.children[0])
             sign = "+" if op == "++" else "-"
             temp = self.new_temp()
             self.tac += [f"{temp} = {expr} {sign} 1", f"{expr} = {temp}"]
@@ -193,12 +269,13 @@ class CodeGenerator:
                 f"STORE {expr}",
             ]
             return expr
+        expr = self.gen_expr(node.children[0])
         temp = self.new_temp()
         self.emit(f"{temp} = {op}{expr}", f"UNARY {op} {expr}")
         return temp
 
     def expr_PostfixOp(self, node: ASTNode) -> str:
-        name = self.gen_expr(node.children[0])
+        name = self.target_ref(node.children[0])
         sign = "+" if node.value == "++" else "-"
         temp = self.new_temp()
         # The temp keeps the *old* value: x++ evaluates to x before incrementing.

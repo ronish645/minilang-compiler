@@ -5,12 +5,16 @@ call chain, lowest precedence first:
 
     assignment -> logical_or -> logical_and -> equality -> comparison
                -> term (+ -) -> factor (* / %) -> unary -> postfix -> primary
+
+After a syntax error the parser records it, skips ahead to the next statement
+("panic-mode recovery") and keeps going, so one run reports several errors.
 """
 
 from __future__ import annotations
 
 from minilang.ast_nodes import ASTNode
-from minilang.errors import ParserError
+from minilang.errors import ErrorCollector, ParserError
+from minilang.hints import syntax_hint
 from minilang.lexer import Token
 
 ASSIGNMENT_OPS = ("=", "+=", "-=", "*=", "/=")
@@ -39,6 +43,7 @@ class Parser:
         self.tokens = tokens
         self.i = 0
         self.previous: Token | None = None
+        self.errors = ErrorCollector()
 
     # ---- token helpers -----------------------------------------------------
     def current(self) -> Token:
@@ -69,7 +74,9 @@ class Parser:
         if not self.check(ttype, value):
             expected = f"'{value}'" if value is not None else TOKEN_TYPE_NAMES.get(ttype, ttype)
             raise ParserError(
-                f"expected {expected} but found {describe_token(tok)}", *self.error_position(value)
+                f"expected {expected} but found {describe_token(tok)}",
+                *self.error_position(value),
+                hint=self.hint_for(tok, expected),
             )
         self.advance()
         return tok
@@ -86,11 +93,61 @@ class Parser:
             return prev.line, prev.col + len(prev.value)
         return tok.line, tok.col
 
+    def hint_for(self, found: Token, expected: str | None) -> str | None:
+        previous = self.previous.value if self.previous else None
+        return syntax_hint(previous, found.value, expected)
+
+    # ---- error recovery ----------------------------------------------------
+    def statement_or_recover(self) -> ASTNode | None:
+        """Parse one statement; on a syntax error, record it and skip ahead."""
+        start = self.i
+        try:
+            return self.statement()
+        except ParserError as error:
+            self.errors.add(error)
+            if self.errors.full:
+                self.errors.raise_if_any()
+            self.synchronize(start)
+            return None
+
+    def synchronize(self, start: int) -> None:
+        """Skip the whole statement that failed, so its leftovers don't cause new errors.
+
+        Rescans from the statement's first token, tracking bracket depth. The
+        statement ends at a ';' outside brackets, or after the '}' that closes
+        its body (continuing through an 'else'). A '}' that closes an outer
+        block is left for that block.
+        """
+        self.i = start
+        depth = 0
+        while not self.check("EOF"):
+            tok = self.current()
+            if tok.type == "SEP" and tok.value in "([{":
+                depth += 1
+            elif tok.type == "SEP" and tok.value in ")]}":
+                if depth == 0:
+                    break  # belongs to an enclosing block
+                depth -= 1
+                if tok.value == "}" and depth == 0:
+                    self.advance()
+                    if not self.check("KW", "else"):
+                        return
+                    continue
+            elif tok.type == "SEP" and tok.value == ";" and depth == 0:
+                self.advance()
+                return
+            self.advance()
+        if self.i == start:
+            self.advance()  # always make progress (e.g. a stray '}')
+
     # ---- statements --------------------------------------------------------
     def parse(self) -> ASTNode:
         program = make_node("Program", self.current())
         while not self.check("EOF"):
-            program.children.append(self.statement())
+            node = self.statement_or_recover()
+            if node is not None:
+                program.children.append(node)
+        self.errors.raise_if_any()
         return program
 
     def statement(self) -> ASTNode:
@@ -105,6 +162,8 @@ class Parser:
                 "for": self.for_statement,
                 "fn": self.function_declaration,
                 "return": self.return_statement,
+                "break": self.loop_control,
+                "continue": self.loop_control,
             }.get(tok.value)
             if handler is not None:
                 return handler()
@@ -123,9 +182,16 @@ class Parser:
                 raise ParserError(
                     "unclosed block: missing '}' for the '{' opened here", node.line, node.col
                 )
-            node.children.append(self.statement())
+            child = self.statement_or_recover()
+            if child is not None:
+                node.children.append(child)
         self.expect("SEP", "}")
         return node
+
+    def loop_control(self) -> ASTNode:
+        kw = self.advance()  # 'break' or 'continue'
+        self.expect("SEP", ";")
+        return make_node(kw.value.capitalize(), kw)
 
     def variable_declaration(self) -> ASTNode:
         kw = self.expect("KW")
@@ -263,10 +329,17 @@ class Parser:
 
     def postfix(self) -> ASTNode:
         node = self.primary()
-        while self.check_op(POSTFIX_OPS):
-            op = self.advance()
-            node = make_node("PostfixOp", op, value=op.value, children=[node])
-        return node
+        while True:
+            if self.check("SEP", "["):
+                bracket = self.advance()
+                index = self.expression()
+                self.expect("SEP", "]")
+                node = make_node("Index", bracket, children=[node, index])
+            elif self.check_op(POSTFIX_OPS):
+                op = self.advance()
+                node = make_node("PostfixOp", op, value=op.value, children=[node])
+            else:
+                return node
 
     def primary(self) -> ASTNode:
         tok = self.current()
@@ -294,9 +367,26 @@ class Parser:
             self.expect("SEP", ")")
             return expr
 
+        if self.check("SEP", "["):
+            return self.array_literal()
+
         raise ParserError(
-            f"expected an expression but found {describe_token(tok)}", tok.line, tok.col
+            f"expected an expression but found {describe_token(tok)}",
+            tok.line,
+            tok.col,
+            hint=self.hint_for(tok, "an expression"),
         )
+
+    def array_literal(self) -> ASTNode:
+        node = make_node("ArrayLiteral", self.expect("SEP", "["))
+        if not self.check("SEP", "]"):
+            node.children.append(self.expression())
+            while self.match("SEP", ","):
+                if self.check("SEP", "]"):  # allow a trailing comma
+                    break
+                node.children.append(self.expression())
+        self.expect("SEP", "]")
+        return node
 
     def call_arguments(self, callee: ASTNode) -> ASTNode:
         args = make_node("Arguments", self.previous)

@@ -1,8 +1,9 @@
 """MiniLang value semantics: literals, operators and printing.
 
 MiniLang values are represented by Python values (int, float, str, bool,
-None), but Python's own rules must not leak through. For example Python
-treats ``True`` as the integer 1 and prints ``None``; MiniLang does neither.
+None, list for arrays), but Python's own rules must not leak through. For
+example Python treats ``True`` as the integer 1, prints ``None`` and accepts
+negative indexes; MiniLang does none of these.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from minilang.errors import MiniLangRuntimeError
+from minilang.hints import IMMUTABLE_STRING_HINT, NEGATIVE_INDEX_HINT
 
 ARITHMETIC_OPS = frozenset({"+", "-", "*", "/", "%"})
 COMPARISON_OPS = frozenset({"<", ">", "<=", ">="})
@@ -26,6 +28,8 @@ def type_name(value: Any) -> str:
         return "string"
     if value is None:
         return "null"
+    if isinstance(value, list):
+        return "array"
     return "function"
 
 
@@ -56,13 +60,24 @@ def format_value(value: Any) -> str:
         return "null"
     if kind == "function":
         return f"<fn {value.name}>"
+    if kind == "array":
+        return "[" + ", ".join(format_element(v) for v in value) + "]"
     return str(value)
+
+
+def format_element(value: Any) -> str:
+    """Inside an array, strings are quoted so ["1"] and [1] print differently."""
+    return f'"{value}"' if isinstance(value, str) else format_value(value)
 
 
 def values_equal(left: Any, right: Any) -> bool:
     # Without this, Python would report true == 1.
     if isinstance(left, bool) != isinstance(right, bool):
         return False
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            values_equal(a, b) for a, b in zip(left, right, strict=True)
+        )
     return left == right
 
 
@@ -117,3 +132,29 @@ def negate(value: Any) -> Any:
     if not is_number(value):
         raise MiniLangRuntimeError(f"cannot apply unary '-' to {type_name(value)}")
     return -value
+
+
+# ---- indexing ----------------------------------------------------------------
+def check_index(container: Any, index: Any) -> None:
+    kind = type_name(container)
+    if kind not in ("array", "string"):
+        raise MiniLangRuntimeError(f"cannot index a value of type {kind}")
+    if type_name(index) != "int":
+        raise MiniLangRuntimeError(f"index must be an int, got {type_name(index)}")
+    if not 0 <= index < len(container):
+        hint = NEGATIVE_INDEX_HINT if index < 0 else None
+        raise MiniLangRuntimeError(
+            f"index {index} out of range for {kind} of length {len(container)}", hint=hint
+        )
+
+
+def get_index(container: Any, index: Any) -> Any:
+    check_index(container, index)
+    return container[index]
+
+
+def set_index(container: Any, index: Any, value: Any) -> None:
+    if isinstance(container, str):
+        raise MiniLangRuntimeError("strings are immutable", hint=IMMUTABLE_STRING_HINT)
+    check_index(container, index)
+    container[index] = value
