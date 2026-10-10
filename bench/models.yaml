@@ -37,7 +37,10 @@ models:
 
   - id: qwen-3b-local
     provider: ollama
-    model: qwen2.5:3b
+    # qwen2.5:3b with a 16K context window (see bench/ollama/*.Modelfile);
+    # Ollama's 4K default silently truncated the spec out of the prompt.
+    model: minilang-qwen2.5-3b
     tier: local
     max_concurrency: 1   # one local GPU/CPU: run sequentially
+    extra: { max_tokens: 2048 }   # stop runaway generations
     price: { input: 0, output: 0 }

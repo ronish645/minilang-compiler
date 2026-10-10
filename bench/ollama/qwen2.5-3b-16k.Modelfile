@@ -1,0 +1,6 @@
+# Ollama's default context window is 4096 tokens. The MiniLang spec alone is
+# ~2.5K tokens, so multi-turn episodes overflowed it and Ollama silently
+# dropped the oldest messages -- including the spec. Same weights, larger window:
+#   ollama create minilang-qwen2.5-3b -f bench/ollama/qwen2.5-3b-16k.Modelfile
+FROM qwen2.5:3b
+PARAMETER num_ctx 16384
