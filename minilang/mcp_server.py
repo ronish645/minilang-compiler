@@ -30,8 +30,9 @@ server = MCPServer(
     "minilang",
     instructions=(
         "Tools for the MiniLang programming language. Read the minilang://spec resource "
-        "before writing MiniLang: it differs from JavaScript and Python (no break, '/' "
-        "always returns a float, && does not short-circuit, no int-to-string conversion). "
+        "before writing MiniLang: it differs from JavaScript and Python ('/' always "
+        "returns a float, no methods (use len(xs), push(xs, v)), no implicit "
+        "conversion (use str(n)), no negative indexes). Errors include fix-it hints. "
         "Use check_program for fast feedback and run_program to execute."
     ),
 )

@@ -13,17 +13,22 @@ source ─▶ Lexer ─▶ Parser ─▶ Semantic Analyzer ─┬─▶ Code Gen
 ```
 
 ```js
-fn fib(n) {
-    if (n < 2) { return n; }
-    return fib(n - 1) + fib(n - 2);
+fn search(xs, target) {                 // binary search
+    let lo = 0;
+    let hi = len(xs) - 1;
+    while (lo <= hi) {
+        let mid = int((lo + hi) / 2);   // '/' always gives a float; int() truncates
+        if (xs[mid] == target) { return mid; }
+        if (xs[mid] < target) { lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return -1;
 }
 
-for (let i = 0; i < 10; i++) {
-    if (fib(i) % 2 == 0) {
-        print(fib(i));
-    }
-}
+let primes = [2, 3, 5, 7, 11, 13];
+print("index of 7: " + str(search(primes, 7)));
 ```
+
+**The language (v2):** ints, floats, strings, booleans, `null` and arrays; `let`/`const`; `if`, `while`, C-style `for`, `break`/`continue`; functions with recursion, mutual recursion and closures; built-ins `len`, `push`, `pop`, `str`, `int`; short-circuit `&&`/`||`; gradual static typing. Full reference: [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md).
 
 ## Quick start
 
@@ -44,7 +49,7 @@ Exit codes: `0` success, `1` compile error, `2` usage error, `3` runtime error.
 
 ## Error messages
 
-Every error names its stage and points at the exact source position:
+Every error names its stage, points at the exact source position, and, where the compiler recognizes the mistake, suggests a fix:
 
 ```
 $ minilang run examples/errors.ml
@@ -53,9 +58,13 @@ error[semantic]: variable 'sise' used before declaration
   |
 6 | print(sise);
   |       ^
+  = help: did you mean 'size'?
 ```
 
-A missing `;` is reported right after the previous token instead of on the next line. With `--json`, the same error is returned as `{"stage", "message", "line", "col"}` for tools to consume.
+- **Fix-it hints** for habits carried over from other languages: `xs.length` (no methods), `var`, `True`/`None`, ternaries, `for x in xs`, `"n=" + n` (use `str(n)`), `n = n / 2` on an int (use `int()`).
+- **Every independent error in one run.** The semantic analyzer keeps going after an error, and the parser skips just the broken statement (tracking brackets), so one mistake gives one error, not a cascade.
+- A missing `;` is reported right after the previous token instead of on the next line.
+- With `--json`, errors come back as `{"stage", "message", "line", "col", "hint", "additional"}` for tools to consume.
 
 ## What each stage does
 
