@@ -118,3 +118,5 @@ Useful filters: `--models claude-haiku gpt-luna`, `--tiers 3 4`, `--conditions o
 - One sample per task and condition. The intervals are wide, and the null result on feedback quality is "no detectable effect", not "no effect".
 - The tasks are small programs. Larger tasks would produce more first-run failures and more room to measure repair.
 - The missing middle: models between 3B and frontier scale (for example 7–14B open models) are where error quality is most likely to matter. That's the natural next experiment.
+- **Qwen's score understates it.** In this run Ollama used its default 4,096-token context window, which silently cut off part of the spec in the system prompt. The benchmark now runs Qwen with a 16K window ([`ollama/qwen2.5-3b-16k.Modelfile`](ollama/qwen2.5-3b-16k.Modelfile)), but tiers 1–4 haven't been re-run with it yet.
+- These results come from an earlier version of the spec. Since then the language gained arrays, strings, more built-ins and first-class functions (spec v2.1), so new runs aren't directly comparable with this table.

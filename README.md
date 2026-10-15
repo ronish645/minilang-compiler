@@ -28,7 +28,7 @@ let primes = [2, 3, 5, 7, 11, 13];
 print("index of 7: " + str(search(primes, 7)));
 ```
 
-**The language (v2):** ints, floats, strings, booleans, `null` and arrays; `let`/`const`; `if`, `while`, C-style `for`, `break`/`continue`; functions with recursion, mutual recursion and closures; built-ins `len`, `push`, `pop`, `str`, `int`; short-circuit `&&`/`||`; gradual static typing. Full reference: [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md).
+**The language (v2.1):** ints, floats, strings, booleans, `null` and arrays; `let`/`const`; `if`, `while`, C-style `for`, `break`/`continue`; first-class functions with recursion, mutual recursion and closures (`makeAdder(5)(10)`, `fs[i](x)`); built-ins `len`, `push`, `pop`, `str`, `int`, `abs`, `min`, `max`, `ord`, `chr`, `slice`; short-circuit `&&`/`||`; gradual static typing with type joins across `if`/`else` branches. Full reference: [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md).
 
 ## Quick start
 
@@ -158,8 +158,12 @@ ruff check . && ruff format --check .
 - [x] Package refactor, positioned errors, CLI, runtime limits, CI
 - [x] Multi-provider LLM benchmark with feedback-quality experiment
 - [x] MCP server exposing the compiler as tools for AI assistants
+- [x] v2.1: calls on any expression (first-class functions), `if`/`else` type joins, `abs`/`min`/`max`/`ord`/`chr`/`slice`
 - [ ] Benchmark mid-size open models (7–14B), where error quality is most likely to matter
 - [ ] Web playground showing every compiler stage
+- [ ] Typed AST (one dataclass per node kind) instead of positional `children[i]`
+- [ ] A small VM that executes the generated TAC, checked against the interpreter on every test program
+- [ ] Interactive REPL
 
 ## Repository layout
 
