@@ -3,7 +3,7 @@
 import pytest
 
 from bench.agent import AgentLimits, run_episode
-from bench.feedback import DIAGNOSTIC, MESSAGE, ONESHOT, OPAQUE
+from bench.feedback import DIAGNOSTIC, HINT, MESSAGE, ONESHOT, OPAQUE
 from bench.llm.base import STOP_REFUSAL, ProviderError, Turn
 from bench.tasks import Task
 from tests.bench.fakes import FakeSession, factory_for, reply, run, submit
@@ -55,7 +55,7 @@ def test_failing_submissions(code, outcome):
     [
         (OPAQUE, "the program failed", "used before declaration"),
         (MESSAGE, "variable 'x' used before declaration", "-->"),
-        (DIAGNOSTIC, "--> <input>:1:7", None),
+        (DIAGNOSTIC, "--> program.ml:1:7", "help"),
     ],
 )
 def test_feedback_depends_on_condition(condition, expected_fragment, absent_fragment):
@@ -148,3 +148,25 @@ def test_episode_round_trips_through_dict():
 
     ep, _ = episode([run("print(x);"), submit("print(3);")])
     assert Episode.from_dict(ep.to_dict()) == ep
+
+
+def test_hint_condition_shows_every_error_with_help():
+    code = "let total = 1;\nprint(totl);\nprint(zz);"
+    _, session = episode([run(code), submit("print(3);")], condition=HINT)
+    feedback = session.tool_results[0][0].content
+    assert "did you mean 'total'?" in feedback
+    assert "2 errors found." in feedback
+
+
+def test_diagnostic_condition_shows_only_the_first_error_without_help():
+    code = "let total = 1;\nprint(totl);\nprint(zz);"
+    _, session = episode([run(code), submit("print(3);")], condition=DIAGNOSTIC)
+    feedback = session.tool_results[0][0].content
+    assert feedback.count("error[") == 1
+    assert "help" not in feedback
+
+
+def test_runtime_error_feedback_includes_partial_output():
+    code = "print(1);\nlet z = 0;\nprint(1 / z);"
+    _, session = episode([run(code), submit("print(3);")], condition=HINT)
+    assert "Output printed before the error:\n1" in session.tool_results[0][0].content

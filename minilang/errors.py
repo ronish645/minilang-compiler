@@ -19,11 +19,20 @@ class MiniLangError(Exception):
 
     stage: ClassVar[str] = "error"
 
-    def __init__(self, message: str, line: int | None = None, col: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        line: int | None = None,
+        col: int | None = None,
+        hint: str | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.line = line
         self.col = col
+        self.hint = hint  # a suggestion for fixing it, e.g. "use len(xs)"
+        # Further errors found in the same pass (this one is the first).
+        self.additional: list[MiniLangError] = []
 
     def __str__(self) -> str:
         where = f" at line {self.line}, col {self.col}" if self.line is not None else ""
@@ -35,7 +44,17 @@ class MiniLangError(Exception):
             self.line, self.col = line, col
 
     def to_dict(self) -> dict[str, Any]:
-        return {"stage": self.stage, "message": self.message, "line": self.line, "col": self.col}
+        data: dict[str, Any] = {
+            "stage": self.stage,
+            "message": self.message,
+            "line": self.line,
+            "col": self.col,
+        }
+        if self.hint:
+            data["hint"] = self.hint
+        if self.additional:
+            data["additional"] = [e.to_dict() for e in self.additional]
+        return data
 
 
 class LexerError(MiniLangError):
@@ -53,7 +72,35 @@ class SemanticError(MiniLangError):
 class MiniLangRuntimeError(MiniLangError):
     stage = "runtime"
 
-    def __init__(self, message: str, line: int | None = None, col: int | None = None):
-        super().__init__(message, line, col)
+    def __init__(
+        self,
+        message: str,
+        line: int | None = None,
+        col: int | None = None,
+        hint: str | None = None,
+    ):
+        super().__init__(message, line, col, hint)
         # Lines printed before the failure; useful when debugging a crash.
         self.partial_output: list[str] = []
+
+
+class ErrorCollector:
+    """Gathers errors so one pass can report several instead of stopping at the first."""
+
+    def __init__(self, limit: int = 10):
+        self.limit = limit
+        self.errors: list[MiniLangError] = []
+
+    def add(self, error: MiniLangError) -> None:
+        self.errors.append(error)
+
+    @property
+    def full(self) -> bool:
+        return len(self.errors) >= self.limit
+
+    def raise_if_any(self) -> None:
+        if not self.errors:
+            return
+        first, *rest = self.errors
+        first.additional = rest
+        raise first

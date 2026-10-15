@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from minilang.errors import LexerError
+from minilang.hints import syntax_hint
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class Lexer:
             "for",
             "fn",
             "return",
+            "break",
+            "continue",
             "print",
             "true",
             "false",
@@ -231,7 +234,12 @@ class Lexer:
             if op is not None:
                 tokens.append(op)
                 continue
-            raise LexerError(f"unexpected character {ch!r}", self.line, self.col)
+            raise LexerError(
+                f"unexpected character {ch!r}",
+                self.line,
+                self.col,
+                hint=syntax_hint(None, ch, None),
+            )
 
         tokens.append(Token("EOF", "", self.line, self.col))
         return tokens

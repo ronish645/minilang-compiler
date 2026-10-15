@@ -80,7 +80,7 @@ def test_dry_run_makes_no_calls(monkeypatch, capsys):
     monkeypatch.setattr(runner_module, "session_factory", lambda m: pytest.fail("API used"))
     assert main(["--dry-run", "--models", "qwen-3b-local", "--tiers", "1"]) == 0
     out = capsys.readouterr().out
-    assert "32 episodes" in out  # 8 tier-1 tasks x 4 conditions
+    assert "40 episodes" in out  # 8 tier-1 tasks x 5 conditions
 
 
 def test_unknown_model_is_an_error():

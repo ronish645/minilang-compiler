@@ -106,7 +106,9 @@ class EpisodeRunner:
         result = run_source(code)
         stage = None if result.ok else result.error["stage"]
         self.episode.runs.append(RunRecord(result.ok, stage))
-        return ToolResult(call.id, format_run_result(result, self.episode.condition), not result.ok)
+        return ToolResult(
+            call.id, format_run_result(result, self.episode.condition, code), not result.ok
+        )
 
     def finish(self, code: str | None, outcome: str | None = None) -> Episode:
         if outcome is None:
