@@ -330,7 +330,11 @@ class Parser:
     def postfix(self) -> ASTNode:
         node = self.primary()
         while True:
-            if self.check("SEP", "["):
+            if self.match("SEP", "("):
+                # A call is a postfix operator, so any expression can be called:
+                # f(x), makeAdder(5)(10), fs[0]().
+                node = self.call_arguments(node)
+            elif self.check("SEP", "["):
                 bracket = self.advance()
                 index = self.expression()
                 self.expect("SEP", "]")
@@ -357,10 +361,7 @@ class Parser:
 
         if tok.type == "IDENT":
             self.advance()
-            node = make_node("Identifier", tok, value=tok.value)
-            if self.match("SEP", "("):
-                return self.call_arguments(node)
-            return node
+            return make_node("Identifier", tok, value=tok.value)
 
         if self.match("SEP", "("):
             expr = self.expression()

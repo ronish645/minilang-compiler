@@ -36,6 +36,10 @@ def error_for(source: str) -> MiniLangError:
         ('let n = 5; print("n = " + n);', 'str(n): "Total: " + str(n)'),
         ("let n = 10; n = n / 2;", "for integer division use int(a / b)"),
         ('let s = "abc"; s[0] = "x";', "build a new string"),
+        # built-ins added in v2.1
+        ("print(Math.max(1, 2));", "there is no Math object; use abs(x), min(a, b), max(a, b)"),
+        ('let s = "abc"; print(substring(s, 0, 1));', "use slice(x, start, end)"),
+        ('let s = "abc"; print(s[0:2]);', "use slice(x, start, end)"),
     ],
 )
 def test_hint_for_common_mistake(source, hint_fragment):

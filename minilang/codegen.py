@@ -284,8 +284,10 @@ class CodeGenerator:
         return temp
 
     def expr_Call(self, node: ASTNode) -> str:
-        func_name = node.children[0].value
-        args = node.children[1].children
+        callee, args_node = node.children
+        # A named function is called directly; any other callee is computed into a temp.
+        func_name = callee.value if callee.kind == "Identifier" else self.gen_expr(callee)
+        args = args_node.children
         for arg in args:
             value = self.gen_expr(arg)
             self.emit(f"param {value}", f"PUSH {value}")

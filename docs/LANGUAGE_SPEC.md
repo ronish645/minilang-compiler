@@ -1,4 +1,4 @@
-# MiniLang Language Specification (v2)
+# MiniLang Language Specification (v2.1)
 
 MiniLang is a small, dynamically executed, statically checked language with C/JavaScript-style syntax. A program is a sequence of statements run top to bottom. There is no `main` function.
 
@@ -15,7 +15,7 @@ print(fact(5));   // 120
 - **Comments:** `// to end of line` and `/* block */`. Block comments do not nest.
 - **Identifiers:** a letter or `_` followed by letters, digits or `_`. Case-sensitive.
 - **Keywords:** `let const if else while for break continue fn return print true false null`
-- **Built-in functions** (reserved names): `len push pop str int`
+- **Built-in functions** (reserved names): `len push pop str int abs min max ord chr slice`
 - **Integers:** `0`, `42`. There is no leading `-` in a literal; `-5` is unary minus applied to `5`. Integers have arbitrary precision.
 - **Floats:** `3.14`, `1e5`, `2.5E-3`. A digit is required after `.`.
 - **Strings:** `"double"` or `'single'` quoted. Escapes: `\n \t \\ \' \"`. Inside single quotes, `''` is a literal `'`.
@@ -31,8 +31,9 @@ print(fact(5));   // 120
 | `bool` | `true`, `false` | `true` |
 | `null` | `null` | `null` |
 | `array` | `[1, "a", [2]]` | `[1, "a", [2]]` (strings inside arrays are quoted) |
+| `function` | a function declared with `fn` | `<fn name>` |
 
-There are no objects, maps or characters: indexing a string gives a one-character string. Functions are **not** values: they can't be stored in variables or passed as arguments.
+There are no objects, maps or characters: indexing a string gives a one-character string. Functions are values (see [Functions](#8-functions)). Built-ins are not: `let f = len;` is an error.
 
 There is **no implicit conversion**. `"n=" + 5` is an error; write `"n=" + str(5)`.
 
@@ -49,6 +50,7 @@ x = 20;
 - Declaring the same name twice **in the same scope** is an error. An inner block may shadow an outer name.
 - Every `{ ... }` block opens a new scope. A `for` loop's `let` variable is visible only inside the loop.
 - **A variable's type is fixed by the first value assigned to it.** The exceptions: an `int` may be stored into a `float` variable, and any variable may hold `null`. So `let n = 10; n = n / 2;` is an error, because `n / 2` is a float. Use `n = int(n / 2);`.
+- A variable declared without a value gets its type from its first assignment. If the branches of an `if` / `else` assign it values of different types, its type is only known at run time.
 - A `const` array can't be reassigned, but its elements can change.
 
 ## 4. Arrays and strings
@@ -83,8 +85,13 @@ print(len(s));         // 5
 | `pop(xs)` | the removed element | error if `xs` is empty |
 | `str(x)` | string | how `print` would show `x`: `str(42)` is `"42"`, `str(true)` is `"true"` |
 | `int(x)` | int | float → int truncates toward zero (`int(7 / 2)` is `3`, `int(-7 / 2)` is `-3`); string → int parses digits (`int("42")`) |
+| `abs(x)` | same as `x` | absolute value of an int or float |
+| `min(a, b)` / `max(a, b)` | int, or float if either is a float | `max(2, 1.5)` is `2.0` |
+| `ord(c)` | int | character code of a one-character string: `ord("A")` is `65` |
+| `chr(n)` | string | the character with code `n`: `chr(97)` is `"a"` |
+| `slice(x, start, end)` | same as `x` | a new array or string with the elements from `start` up to (not including) `end`. Needs `0 <= start <= end <= len(x)`; anything else is an error (no clamping, no negative indexes) |
 
-There are no methods or properties: write `len(xs)`, not `xs.length`, and `push(xs, v)`, not `xs.push(v)`.
+There are no methods or properties: write `len(xs)`, not `xs.length`, and `push(xs, v)`, not `xs.push(v)`. There is no slice syntax: write `slice(s, 0, 3)`, not `s[0:3]` or `s.slice(0, 3)`.
 
 ## 6. Operators
 
@@ -149,6 +156,21 @@ print(add(2, 3));
 - `return expr;` or bare `return;`. A function that ends without `return` gives `null`.
 - Parameters are local variables. Functions can read and modify variables from enclosing scopes (closures).
 - Functions may be declared inside other functions. `return` outside a function is an error, and `break`/`continue` can't cross a function boundary.
+- Functions are values: they can be stored in variables and arrays, passed as arguments and returned. Any expression that produces a function can be called:
+
+```js
+fn makeAdder(n) {
+    fn add(x) { return x + n; }
+    return add;               // a closure: it remembers n
+}
+print(makeAdder(5)(10));      // 15
+fn twice(f, x) { return f(f(x)); }
+print(twice(makeAdder(1), 0)); // 2
+let ops = [makeAdder(1), makeAdder(10)];
+print(ops[1](5));             // 15
+```
+
+- Calling something that isn't a function is an error. The argument count of a function called through a variable or parameter is checked when the program runs.
 
 ## 9. Type checking
 
@@ -193,6 +215,10 @@ A run is stopped with a runtime error if it executes more than 1,000,000 stateme
 | `True`, `False`, `None`, `undefined` | `true`, `false`, `null` |
 | `if (xs.length)` (truthiness) | `if (len(xs) > 0)` |
 | `x %= 2` | `x = x % 2;` |
+| `Math.abs(x)`, `Math.max(a, b)` | `abs(x)`, `max(a, b)` |
+| `s.slice(1, 3)`, `s[1:3]` | `slice(s, 1, 3)` |
+| `s.charCodeAt(0)`, `String.fromCharCode(n)` | `ord(s[0])`, `chr(n)` |
+| `(x) => x * 2`, `lambda x: x * 2` | a named `fn`, passed by name |
 
 ## 13. Complete example
 

@@ -10,7 +10,12 @@ from __future__ import annotations
 import difflib
 from collections.abc import Iterable
 
-BUILTIN_HINT = "built-ins are len(x), push(xs, v), pop(xs), str(x) and int(x)"
+BUILTIN_HINT = (
+    "built-ins are len(x), push(xs, v), pop(xs), str(x), int(x), abs(x), "
+    "min(a, b), max(a, b), ord(c), chr(n) and slice(x, start, end)"
+)
+MATH_HINT = "there is no Math object; use abs(x), min(a, b), max(a, b)"
+SLICE_HINT = "use slice(x, start, end) for part of a string or array"
 
 # Identifiers that are keywords or functions in other languages.
 FOREIGN_NAMES = {
@@ -33,6 +38,9 @@ FOREIGN_NAMES = {
     "append": f"use push(xs, v); {BUILTIN_HINT}",
     "toString": f"use str(x); {BUILTIN_HINT}",
     "parseInt": f"use int(x); {BUILTIN_HINT}",
+    "Math": MATH_HINT,
+    "substring": SLICE_HINT,
+    "substr": SLICE_HINT,
     "floor": "for integer division use int(a / b), which truncates toward zero",
     "range": "use a C-style loop: for (let i = 0; i < n; i++) { ... }",
     "in": "use a C-style loop: for (let i = 0; i < len(xs); i++) { ... }",
@@ -52,7 +60,11 @@ def syntax_hint(previous: str | None, found: str, expected: str | None) -> str |
     if found == ".":
         if previous == "console":
             return "print a value with print(x)"
+        if previous == "Math":
+            return MATH_HINT
         return f"MiniLang has no methods or properties; {BUILTIN_HINT}"
+    if found == ":" and expected == "']'":
+        return f"MiniLang has no slice syntax; {SLICE_HINT}"
     if found == "?":
         return "MiniLang has no ternary operator; use if / else"
     if found == "=" and previous in ("%",):

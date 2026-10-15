@@ -60,7 +60,7 @@ def test_valid_programs_are_accepted(source):
         ("1 = 2;", "invalid assignment target"),
         ("while (1) {}", "while condition must be boolean"),
         ("for (; 'x'; ) {}", "for condition must be boolean"),
-        ("let f = 1; f();", "not a declared function"),
+        ("let f = 1; f();", "cannot call a value of type int"),
         ("fn f(a) {} f();", "expects 1 argument(s), got 0"),
         ("return;", "outside function"),
         ("{ let inner = 1; } print(inner);", "used before declaration"),

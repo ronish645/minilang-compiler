@@ -34,6 +34,8 @@ INCREMENT_OPS = ("++", "--")
 # are "unknown" at compile time. An unknown operand is accepted wherever a
 # concrete type would be, and any real mismatch is caught by the runtime.
 UNKNOWN = "unknown"
+# A variable with one of these types takes its type from its next assignment.
+OPEN_TYPES = (UNKNOWN, "null")
 
 
 @dataclass
@@ -90,6 +92,18 @@ def compatible_types(target: str, value: str) -> bool:
     if UNKNOWN in (target, value) or "null" in (target, value):
         return True
     return target == value or (target == "float" and value == "int")
+
+
+def join_types(start: str, branch_types: list[str]) -> str:
+    """A variable's type after an if, from its type at the end of each branch.
+
+    Branches that left it open don't constrain it. If the others agree, it
+    keeps that type; if they disagree, it becomes dynamic (checked at run time).
+    """
+    settled = {t for t in branch_types if t not in OPEN_TYPES}
+    if not settled:
+        return start
+    return settled.pop() if len(settled) == 1 else UNKNOWN
 
 
 def arithmetic_result_type(op: str, left: str, right: str) -> str:
@@ -207,8 +221,21 @@ class SemanticAnalyzer:
 
     def visit_If(self, node: ASTNode) -> None:
         self.require_bool_condition(node.children[0], "if")
+        # Variables whose type is still open can get it from an assignment in a
+        # branch. Only one branch runs, so each starts from the types before the
+        # if, and the results are joined where the branches meet again.
+        untyped = [s for s in self.current_scope.visible().values() if s.var_type in OPEN_TYPES]
+        before = [s.var_type for s in untyped]
+        outcomes = []
         for branch in node.children[1:]:
-            self.analyze(branch)
+            try:
+                self.analyze(branch)
+            finally:
+                outcomes.append([s.var_type for s in untyped])
+                for symbol, var_type in zip(untyped, before, strict=True):
+                    symbol.var_type = var_type
+        for symbol, start, *results in zip(untyped, before, *outcomes, strict=True):
+            symbol.var_type = join_types(start, results)
 
     def analyze_loop_body(self, body: ASTNode) -> None:
         self.loop_depth += 1
@@ -322,7 +349,7 @@ class SemanticAnalyzer:
             return arithmetic_result_type(op[0], current, right_type)
         if symbol is None:
             return right_type
-        if current in (UNKNOWN, "null"):
+        if current in OPEN_TYPES:
             symbol.var_type = right_type
         elif not compatible_types(current, right_type):
             hint = FLOAT_ASSIGN_HINT if (current, right_type) == ("int", "float") else None
@@ -389,20 +416,29 @@ class SemanticAnalyzer:
 
     def visit_Call(self, node: ASTNode) -> str:
         callee, args_node = node.children
-        name = callee.value
-        if name in BUILTIN_NAMES:
-            return check_builtin(name, [self.analyze(arg) for arg in args_node.children])
-
-        symbol = self.current_scope.lookup(name)
-        if symbol is None or symbol.kind != "function":
-            functions = {n for n, s in self.current_scope.visible().items() if s.kind == "function"}
-            hint = did_you_mean(name, functions | BUILTIN_NAMES)
-            raise SemanticError(f"'{name}' is not a declared function", hint=hint)
-        if len(args_node.children) != len(symbol.params):
-            raise SemanticError(
-                f"function '{name}' expects {len(symbol.params)} "
-                f"argument(s), got {len(args_node.children)}"
-            )
+        if callee.kind == "Identifier" and callee.value in BUILTIN_NAMES:
+            return check_builtin(callee.value, [self.analyze(arg) for arg in args_node.children])
+        if callee.kind == "Identifier":
+            self.check_named_callee(callee.value, len(args_node.children))
+        else:
+            callee_type = self.analyze(callee)
+            if callee_type not in ("function", UNKNOWN):
+                raise SemanticError(f"cannot call a value of type {callee_type}")
         for arg in args_node.children:
             self.analyze(arg)
         return UNKNOWN
+
+    def check_named_callee(self, name: str, arg_count: int) -> None:
+        """A call by name: a declared function (arity known) or a function-valued variable."""
+        symbol = self.current_scope.lookup(name)
+        if symbol is None:
+            functions = {n for n, s in self.current_scope.visible().items() if s.kind == "function"}
+            hint = did_you_mean(name, functions | BUILTIN_NAMES)
+            raise SemanticError(f"'{name}' is not a declared function", hint=hint)
+        if symbol.kind == "function":
+            if arg_count != len(symbol.params):
+                raise SemanticError(
+                    f"function '{name}' expects {len(symbol.params)} argument(s), got {arg_count}"
+                )
+        elif symbol.var_type not in ("function", *OPEN_TYPES):
+            raise SemanticError(f"cannot call a value of type {symbol.var_type}")

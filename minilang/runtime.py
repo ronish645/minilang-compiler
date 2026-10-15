@@ -17,7 +17,15 @@ from typing import Any
 from minilang.ast_nodes import ASTNode
 from minilang.builtins import BUILTIN_NAMES, call_builtin
 from minilang.errors import MiniLangRuntimeError
-from minilang.values import apply_binary, format_value, get_index, literal_value, negate, set_index
+from minilang.values import (
+    apply_binary,
+    format_value,
+    get_index,
+    literal_value,
+    negate,
+    set_index,
+    type_name,
+)
 
 
 class ReturnSignal(Exception):
@@ -304,13 +312,14 @@ class MiniRuntime:
         return old_value
 
     def eval_Call(self, node: ASTNode, env: Environment) -> Any:
-        func_name = node.children[0].value
-        args = [self.eval_expr(arg, env) for arg in node.children[1].children]
-        if func_name in BUILTIN_NAMES:
-            return call_builtin(func_name, args)
-        func = env.resolve(func_name).value
+        callee, args_node = node.children
+        if callee.kind == "Identifier" and callee.value in BUILTIN_NAMES:
+            args = [self.eval_expr(arg, env) for arg in args_node.children]
+            return call_builtin(callee.value, args)
+        func = self.eval_expr(callee, env)  # the callee first, then the arguments
+        args = [self.eval_expr(arg, env) for arg in args_node.children]
         if not isinstance(func, UserFunction):
-            raise MiniLangRuntimeError(f"'{func_name}' is not callable")
+            raise MiniLangRuntimeError(f"cannot call a value of type {type_name(func)}")
         return self.call_function(func, args)
 
     def call_function(self, func: UserFunction, args: list[Any]) -> Any:

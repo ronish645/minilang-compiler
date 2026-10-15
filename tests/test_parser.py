@@ -20,7 +20,9 @@ def sexpr(node: ASTNode) -> str:
         return str(node.value)
     if node.kind == "Call":
         args = " ".join(sexpr(a) for a in node.children[1].children)
-        return f"(call {node.children[0].value} {args})".replace(" )", ")")
+        return f"(call {sexpr(node.children[0])} {args})".replace(" )", ")")
+    if node.kind == "Index":
+        return f"(index {sexpr(node.children[0])} {sexpr(node.children[1])})"
     parts = " ".join(sexpr(c) for c in node.children)
     return f"({node.value} {parts})"
 
