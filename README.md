@@ -1,11 +1,17 @@
-# MiniLang Compiler
+# MiniLang: a compiler and LLM benchmark
 
 [![CI](https://github.com/ronish645/minilang-compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/ronish645/minilang-compiler/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
 ![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
 ![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)
 
-A compiler for **MiniLang**, a small C/JavaScript-style language, written from scratch in Python with no parser generators and no runtime dependencies. It's also an **LLM benchmark**: since no model has seen MiniLang before, it measures whether Claude, GPT and open models can learn a new language from its spec and fix their own code using compiler feedback.
+**Can a language model learn a programming language it has never seen, from the spec alone? And when its code fails, how much do better compiler error messages help it recover?**
+
+MiniLang is a small C/JavaScript-style language created for this project, so it can't be in any model's training data. This repo contains:
+
+- **The compiler**, written from scratch in Python with no parser generators and no runtime dependencies: lexer, recursive-descent parser, gradual type checker, three-address code generator and a sandboxed interpreter with resource limits.
+- **The benchmark** ([`bench/`](bench/README.md)): Claude, GPT and a local Qwen model learn MiniLang from its spec and write programs through a compiler-as-tool agent loop, under feedback conditions ranging from "the program failed" to fix-it hints.
+- **An MCP server** that gives AI assistants the compiler as tools.
 
 ```
 source ─▶ Lexer ─▶ Parser ─▶ Semantic Analyzer ─┬─▶ Code Generator  (three-address code + pseudo-assembly)

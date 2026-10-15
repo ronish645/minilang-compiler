@@ -29,13 +29,14 @@ The model sees the expected output, as it would with a test case. The reference 
 | `oneshot` | none | n/a: it writes the program once, blind |
 | `opaque` | run + submit | `Error: the program failed.` |
 | `message` | run + submit | `Error: variable 'y' used before declaration` |
-| `diagnostic` | run + submit | Stage, `file:line:col`, the source line and a `^` caret, plus output printed before a runtime error |
+| `diagnostic` | run + submit | Stage, `file:line:col`, the source line and a `^` caret, plus output printed before a runtime error (first error only) |
+| `hint` | run + submit | Everything in `diagnostic`, for **every** error, plus fix-it hints (`help: use len(xs)`) |
 
 Successful runs look identical in every condition: the printed output.
 
 ## Tasks
 
-32 tasks in [`tasks.yaml`](tasks.yaml), each with a hidden reference solution. [`tests/bench/test_tasks_and_config.py`](../tests/bench/test_tasks_and_config.py) runs every reference solution, so an unsolvable task can't silently cap the scores.
+42 tasks in [`tasks.yaml`](tasks.yaml), each with a hidden reference solution. [`tests/bench/test_tasks_and_config.py`](../tests/bench/test_tasks_and_config.py) runs every reference solution, so an unsolvable task can't silently cap the scores.
 
 | Tier | Count | What it tests |
 |---|---|---|
@@ -43,8 +44,9 @@ Successful runs look identical in every condition: the printed output.
 | 2 | 10 | Classic small algorithms |
 | 3 | 7 | **Spec traps** that punish habits from JS and Python: no `break`, `/` always returns a float (and a variable's type is fixed), `&&` doesn't short-circuit |
 | 4 | 7 | Traps combined: no int-to-string conversion means one-line output like `Sum = 5050` needs hand-built digit-to-text code |
+| 5 | 10 | Array and string programs (v2 spec): sorting, binary search, sieve, matrix multiply, Caesar cipher, anagrams, bracket matching |
 
-Tier 4 was added after the first run showed frontier models solving almost all of tiers 1–3. They solved tier 4 too (see [Lessons](#lessons-from-building-it)).
+Tier 4 was added after the first run showed frontier models solving almost all of tiers 1–3. They solved tier 4 too (see [Lessons](#lessons-from-building-it)). Tiers 3–4 describe the v1 spec: `break`, short-circuit `&&` and `str()` were added in v2. Tier 5 was added with v2.
 
 ## Models
 
@@ -91,6 +93,17 @@ Useful filters: `--models claude-haiku gpt-luna`, `--tiers 3 4`, `--conditions o
 1. **Ceiling effects are stubborn.** Frontier models saturated tiers 1–3, so there were almost no failures to repair. A harder tier 4 was saturated too (112/112, even one-shot). Making small tasks harder didn't move the ceiling. Measuring repair on frontier models needs a different kind of task (larger programs) or a different population (mid-size models).
 2. **Not every model uses its tools.** The first failures were all one model submitting confident, untested code that fell into the float-division trap. Feedback quality only matters if the model asks for feedback, hence the *Tested first* metric.
 3. **"OpenAI-compatible" isn't one API.** The same model needed a different endpoint once tools and reasoning were combined.
+
+## Results: tier 5 on spec v2.1 (run `v21-tier5`, 2026-10-14)
+
+250 graded episodes: 5 models × 10 array/string programs × 5 conditions (all five conditions). Full tables: [`results/v21-tier5/REPORT.md`](results/v21-tier5/REPORT.md).
+
+| Model | Pass rate | Cost per solve |
+|---|---|---|
+| Claude Haiku 5.5, Claude Sonnet 5.5, GPT-6 Luna, GPT-6.1 Sol | **100%** each (50/50) | $0.0003–$0.0093 |
+| Qwen 2.5 3B (local, 16K context) | 4% (2/50) | free |
+
+The ceiling/floor pattern from the v2 run held on harder programs and a richer spec. Hosted models passed every first run, so there was nothing to repair. Qwen repaired nothing in any condition, including `hint`: it wrote no code in 17 episodes, ran its code in only 17 of 40 tool episodes, and mostly failed on carried-over method syntax (`xs.length`). Measuring the effect of feedback quality needs a model in between.
 
 ## Results (run `v2`, 2026-10-08)
 
