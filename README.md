@@ -7,6 +7,8 @@
 
 **Can a language model learn a programming language it has never seen, from the spec alone? And when its code fails, how much do better compiler error messages help it recover?**
 
+**[Live demo →](https://ronish645.github.io/minilang-compiler/)** run the compiler in your browser, explore the benchmark charts, and inspect every graded episode.
+
 MiniLang is a small C/JavaScript-style language created for this project, so it can't be in any model's training data. This repo contains:
 
 - **The compiler**, written from scratch in Python with no parser generators and no runtime dependencies: lexer, recursive-descent parser, gradual type checker, three-address code generator and a sandboxed interpreter with resource limits.
@@ -164,9 +166,9 @@ ruff check . && ruff format --check .
 - [x] Package refactor, positioned errors, CLI, runtime limits, CI
 - [x] Multi-provider LLM benchmark with feedback-quality experiment
 - [x] MCP server exposing the compiler as tools for AI assistants
+- [x] Showcase site: in-browser playground (Pyodide), benchmark charts, episode explorer
 - [x] v2.1: calls on any expression (first-class functions), `if`/`else` type joins, `abs`/`min`/`max`/`ord`/`chr`/`slice`
 - [ ] Benchmark mid-size open models (7–14B), where error quality is most likely to matter
-- [ ] Web playground showing every compiler stage
 - [ ] Typed AST (one dataclass per node kind) instead of positional `children[i]`
 - [ ] A small VM that executes the generated TAC, checked against the interpreter on every test program
 - [ ] Interactive REPL
@@ -179,6 +181,7 @@ bench/           LLM benchmark: tasks, agent loop, provider adapters, runner, re
 tests/           unit, golden, regression, CLI, docs, MCP and benchmark tests
 examples/        sample programs
 docs/            language specification and build notes
+site/            showcase website (React + Tailwind; the compiler runs in the browser via Pyodide)
 ```
 
 Originally built for CS 453 (Compiler Design) at San Francisco Bay University, then rebuilt as a tested, packaged tool.
