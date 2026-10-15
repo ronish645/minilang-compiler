@@ -1,11 +1,15 @@
-import { Container, PageHeader } from "../components/layout/Page";
+import { PageHeader } from "../components/layout/Page";
+import { ExplorerView } from "../features/explorer/ExplorerView";
 
-// Placeholder: replaced by the Explorer feature.
 export default function ExplorerPage() {
   return (
     <>
-      <PageHeader eyebrow="Coming soon" title="Explorer" />
-      <Container className="py-10" />
+      <PageHeader
+        eyebrow="Episodes"
+        title="Every graded run, inspectable"
+        description="These are the exact programs the models submitted, with each run's result and the graded output. Filter, search, and open any episode."
+      />
+      <ExplorerView />
     </>
   );
 }

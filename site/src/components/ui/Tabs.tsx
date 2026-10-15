@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { rovingKeyDown } from "../../lib/rovingFocus";
 
 export interface TabItem<T extends string> {
   id: T;
@@ -23,6 +24,7 @@ export function Tabs<T extends string>({ tabs, active, onChange, label, classNam
       role="tablist"
       aria-label={label}
       className={cn("flex gap-1 overflow-x-auto border-b border-border", className)}
+      onKeyDown={(event) => rovingKeyDown(event, tabs.map((t) => t.id), active, onChange)}
     >
       {tabs.map((tab) => {
         const selected = tab.id === active;
@@ -31,7 +33,9 @@ export function Tabs<T extends string>({ tabs, active, onChange, label, classNam
             key={tab.id}
             type="button"
             role="tab"
+            data-roving
             aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.id)}
             className={cn(
               "-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition",

@@ -68,12 +68,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <a
-        href="#main"
+      {/* A button, not href="#main": under HashRouter a #fragment would be read as a route. */}
+      <button
+        type="button"
+        onClick={() => document.getElementById("main")?.focus()}
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2"
       >
         Skip to content
-      </a>
+      </button>
       <header className="sticky top-0 z-40 border-b border-border bg-page/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Logo />
@@ -119,7 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </header>
 
-      <main id="main" className="flex-1">
+      <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
         {children}
       </main>
 

@@ -6,4 +6,8 @@ import { defineConfig } from "vite";
 export default defineConfig({
   base: "/minilang-compiler/",
   plugins: [react(), tailwindcss()],
+  // The compiler worker loads Pyodide with a dynamic import(), so build it as an ES module.
+  worker: { format: "es" },
+  // The playground's lazy chunk is mostly the CodeMirror editor; it loads only on that page.
+  build: { chunkSizeWarningLimit: 800 },
 });

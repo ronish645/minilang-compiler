@@ -1,4 +1,5 @@
 import { cn } from "../../lib/cn";
+import { rovingKeyDown } from "../../lib/rovingFocus";
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -26,6 +27,7 @@ export function SegmentedControl<T extends string>({
       role="radiogroup"
       aria-label={label}
       className="inline-flex max-w-full overflow-x-auto rounded-lg bg-surface-2 p-1 ring-1 ring-inset ring-border"
+      onKeyDown={(event) => rovingKeyDown(event, options.map((o) => o.value), value, onChange)}
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -34,7 +36,9 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             type="button"
             role="radio"
+            data-roving
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
             onClick={() => onChange(option.value)}
             className={cn(
               "whitespace-nowrap rounded-md font-medium transition",

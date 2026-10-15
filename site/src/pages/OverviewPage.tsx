@@ -1,11 +1,5 @@
-import { Container, PageHeader } from "../components/layout/Page";
+import { OverviewView } from "../features/overview/OverviewView";
 
-// Placeholder: replaced by the Overview feature.
 export default function OverviewPage() {
-  return (
-    <>
-      <PageHeader eyebrow="Coming soon" title="Overview" />
-      <Container className="py-10" />
-    </>
-  );
+  return <OverviewView />;
 }
