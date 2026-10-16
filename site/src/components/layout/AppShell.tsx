@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import { GitHubIcon } from "../ui/GitHubIcon";
-import { REPO_URL } from "../../lib/links";
+import { API_DOCS_URL, REPO_URL } from "../../lib/links";
 import { useTheme } from "../../lib/theme";
 
 const NAV = [
@@ -133,7 +133,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               open source
             </a>
           </p>
-          <p className="text-muted">Python · React · Pyodide · Tailwind</p>
+          <p className="text-muted">
+            <a href={API_DOCS_URL} className="font-medium text-ink-2 underline-offset-4 hover:underline">
+              REST API
+            </a>{" "}
+            · Python · React · Pyodide · Tailwind
+          </p>
         </div>
       </footer>
     </div>
