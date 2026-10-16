@@ -19,11 +19,20 @@ from minilang.diagnostics import format_diagnostic
 from minilang.errors import MiniLangError, MiniLangRuntimeError
 from minilang.lexer import Lexer
 from minilang.parser import Parser
+from minilang.recursion import FRONT_END_RECURSION_LIMIT, python_recursion_limit
 from minilang.runtime import MiniRuntime, RuntimeLimits
 from minilang.semantic import SemanticAnalyzer
 
 # Browsers run Python more slowly, so stop runaway programs sooner than the CLI does.
-PLAYGROUND_LIMITS = RuntimeLimits(max_steps=200_000, max_output_lines=2_000)
+PLAYGROUND_LIMITS = RuntimeLimits(
+    max_steps=200_000,
+    max_output_lines=2_000,
+    max_output_chars=100_000,
+    max_string_length=100_000,
+    max_array_length=100_000,
+    max_alloc_units=50_000_000,  # ~50 MB of strings and array slots per run
+    max_seconds=2.0,
+)
 
 T = TypeVar("T")
 
@@ -35,7 +44,7 @@ def ast_to_dict(node: ASTNode) -> dict[str, Any]:
         "type": node.literal_type,
         "line": node.line,
         "col": node.col,
-        "children": [ast_to_dict(child) for child in node.children],
+        "children": [ast_to_dict(child) for child in node.children],  # depth <= MAX_TREE_DEPTH
     }
 
 
@@ -55,7 +64,7 @@ def timed(timings: dict[str, float], stage: str, work: Callable[[], T]) -> T:
         timings[stage] = round((time.perf_counter() - start) * 1000, 3)
 
 
-def explore(source: str) -> dict[str, Any]:
+def explore(source: str, limits: RuntimeLimits = PLAYGROUND_LIMITS) -> dict[str, Any]:
     """Run each stage in order, keeping everything produced before a failure."""
     result: dict[str, Any] = {
         "ok": False,
@@ -76,12 +85,13 @@ def explore(source: str) -> dict[str, Any]:
             {"type": t.type, "value": t.value, "line": t.line, "col": t.col} for t in tokens
         ]
         ast = timed(timings, "parse", Parser(tokens).parse)
-        result["ast"] = ast_to_dict(ast)
+        with python_recursion_limit(FRONT_END_RECURSION_LIMIT):
+            result["ast"] = ast_to_dict(ast)
         timed(timings, "check", lambda: SemanticAnalyzer().analyze(ast))
         result["tac"], result["asm"] = timed(
             timings, "codegen", lambda: CodeGenerator().generate(ast)
         )
-        result["output"] = timed(timings, "run", lambda: MiniRuntime(PLAYGROUND_LIMITS).run(ast))
+        result["output"] = timed(timings, "run", lambda: MiniRuntime(limits).run(ast))
         result["ok"] = True
     except MiniLangError as error:
         result["failed_stage"] = error.stage

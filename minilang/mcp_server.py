@@ -10,7 +10,6 @@ spec resource, write MiniLang, and run or check it with these tools.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -20,8 +19,8 @@ from minilang.codegen import CodeGenerator
 from minilang.diagnostics import format_diagnostic
 from minilang.errors import MiniLangError
 from minilang.pipeline import analyze_source, run_source
+from minilang.service import language_spec as read_spec
 
-SPEC_PATH = Path(__file__).parent.parent / "docs" / "LANGUAGE_SPEC.md"
 MAX_SOURCE_CHARS = 100_000  # reject absurdly large inputs before compiling
 # Every tool is a pure function of its input: safe to call and to repeat.
 PURE = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
@@ -95,7 +94,7 @@ def compile_program(code: str) -> dict[str, Any]:
     mime_type="text/markdown",
 )
 def language_spec() -> str:
-    return SPEC_PATH.read_text()
+    return read_spec()
 
 
 def main() -> None:

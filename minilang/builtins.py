@@ -93,7 +93,10 @@ def check_builtin(name: str, arg_types: list[str]) -> str:
 # ---- runtime -----------------------------------------------------------------
 def to_int(value: Any) -> int:
     if isinstance(value, float):
-        return int(value)  # truncates toward zero
+        try:
+            return int(value)  # truncates toward zero
+        except (OverflowError, ValueError):  # inf or nan
+            raise MiniLangRuntimeError(f"int() cannot convert {format_value(value)}") from None
     if isinstance(value, str):
         try:
             return int(value.strip())

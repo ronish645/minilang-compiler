@@ -16,6 +16,7 @@ addressed as ``xs[i]`` in both reads and writes.
 from __future__ import annotations
 
 from minilang.ast_nodes import ASTNode
+from minilang.recursion import FRONT_END_RECURSION_LIMIT, python_recursion_limit
 
 OP_INSTRUCTIONS = {
     "+": "ADD",
@@ -93,7 +94,8 @@ class CodeGenerator:
             self.loops.pop()
 
     def generate(self, node: ASTNode) -> tuple[list[str], list[str]]:
-        self.visit(node)
+        with python_recursion_limit(FRONT_END_RECURSION_LIMIT):
+            self.visit(node)
         return self.tac, self.pseudo
 
     # ---- statements --------------------------------------------------------

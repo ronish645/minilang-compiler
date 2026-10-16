@@ -8,18 +8,17 @@ exceptions that unwind to the enclosing call or loop.
 
 from __future__ import annotations
 
-import sys
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from minilang.ast_nodes import ASTNode
+from minilang.budget import Budget
 from minilang.builtins import BUILTIN_NAMES, call_builtin
 from minilang.errors import MiniLangRuntimeError
+from minilang.recursion import python_recursion_limit
 from minilang.values import (
     apply_binary,
-    format_value,
     get_index,
     literal_value,
     negate,
@@ -90,22 +89,19 @@ class RuntimeLimits:
     max_steps: int = 1_000_000  # statements executed
     max_call_depth: int = 500  # nested MiniLang function calls
     max_output_lines: int = 10_000
+    max_output_chars: int = 10_000_000
+    max_string_length: int = 10_000_000
+    max_array_length: int = 10_000_000
+    # Python can't print ints over ~4,300 digits (about 14,000 bits), so stay below that.
+    max_int_bits: int = 14_000
+    max_alloc_units: int = 1_000_000_000  # characters + array elements created per run
+    max_seconds: float | None = None  # wall-clock limit, checked every 1,024 steps
 
 
 # Each MiniLang call nests ~10 Python frames (measured: exec -> eval -> call
 # -> ...), more inside nested statements; 30 leaves headroom.
 # The Python limit is raised during a run so max_call_depth is reachable.
 PYTHON_FRAMES_PER_CALL = 30
-
-
-@contextmanager
-def python_recursion_limit(minimum: int) -> Iterator[None]:
-    previous = sys.getrecursionlimit()
-    sys.setrecursionlimit(max(previous, minimum))
-    try:
-        yield
-    finally:
-        sys.setrecursionlimit(previous)
 
 
 class MiniRuntime:
@@ -115,6 +111,7 @@ class MiniRuntime:
         self.output: list[str] = []
         self.steps = 0
         self.call_depth = 0
+        self.budget = Budget(self.limits)
 
     def run(self, node: ASTNode) -> list[str]:
         try:
@@ -144,6 +141,7 @@ class MiniRuntime:
                 node.line,
                 node.col,
             )
+        self.budget.check_time(self.steps)
         try:
             method(node, env)
         except MiniLangRuntimeError as error:
@@ -175,7 +173,7 @@ class MiniRuntime:
             raise MiniLangRuntimeError(
                 f"output limit exceeded ({self.limits.max_output_lines} lines)"
             )
-        self.output.append(format_value(self.eval_expr(node.children[0], env)))
+        self.output.append(self.budget.output_line(self.eval_expr(node.children[0], env)))
 
     def exec_ExpressionStatement(self, node: ASTNode, env: Environment) -> None:
         self.eval_expr(node.children[0], env)
@@ -253,7 +251,9 @@ class MiniRuntime:
         return env.resolve(node.value).value
 
     def eval_ArrayLiteral(self, node: ASTNode, env: Environment) -> list:
-        return [self.eval_expr(element, env) for element in node.children]
+        array = [self.eval_expr(element, env) for element in node.children]
+        self.budget.charge_result(array)
+        return array
 
     def eval_Index(self, node: ASTNode, env: Environment) -> Any:
         container = self.eval_expr(node.children[0], env)
@@ -280,7 +280,7 @@ class MiniRuntime:
     def eval_Assign(self, node: ASTNode, env: Environment) -> Any:
         get, put = self.place(node.children[0], env)
         right = self.eval_expr(node.children[1], env)
-        result = right if node.value == "=" else apply_binary(node.value[0], get(), right)
+        result = right if node.value == "=" else self.binary(node.value[0], get(), right)
         put(result)
         return result
 
@@ -293,13 +293,18 @@ class MiniRuntime:
         if op == "||" and left:
             return True
         right = self.eval_expr(node.children[1], env)
+        return self.binary(op, left, right)
+
+    def binary(self, op: str, left: Any, right: Any) -> Any:
+        """Apply an operator after checking its result won't exceed the limits."""
+        self.budget.check_binary(op, left, right)
         return apply_binary(op, left, right)
 
     def eval_UnaryOp(self, node: ASTNode, env: Environment) -> Any:
         op = node.value
         if op in ("++", "--"):
             get, put = self.place(node.children[0], env)
-            new_value = apply_binary(op[0], get(), 1)
+            new_value = self.binary(op[0], get(), 1)
             put(new_value)
             return new_value
         value = self.eval_expr(node.children[0], env)
@@ -308,19 +313,30 @@ class MiniRuntime:
     def eval_PostfixOp(self, node: ASTNode, env: Environment) -> Any:
         get, put = self.place(node.children[0], env)
         old_value = get()
-        put(apply_binary(node.value[0], old_value, 1))
+        put(self.binary(node.value[0], old_value, 1))
         return old_value
 
     def eval_Call(self, node: ASTNode, env: Environment) -> Any:
         callee, args_node = node.children
         if callee.kind == "Identifier" and callee.value in BUILTIN_NAMES:
             args = [self.eval_expr(arg, env) for arg in args_node.children]
-            return call_builtin(callee.value, args)
+            return self.call_builtin_within_budget(callee.value, args)
         func = self.eval_expr(callee, env)  # the callee first, then the arguments
         args = [self.eval_expr(arg, env) for arg in args_node.children]
         if not isinstance(func, UserFunction):
             raise MiniLangRuntimeError(f"cannot call a value of type {type_name(func)}")
         return self.call_function(func, args)
+
+    def call_builtin_within_budget(self, name: str, args: list[Any]) -> Any:
+        # Checked before running: these could build something huge.
+        if name == "str" and len(args) == 1:
+            return self.budget.to_text(args[0])
+        if name == "push" and args and isinstance(args[0], list):
+            self.budget.check_push(args[0])
+        result = call_builtin(name, args)
+        if name in ("slice", "chr"):  # new values, bounded by their inputs
+            self.budget.charge_result(result)
+        return result
 
     def call_function(self, func: UserFunction, args: list[Any]) -> Any:
         if len(args) != len(func.params):
