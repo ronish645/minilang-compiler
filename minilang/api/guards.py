@@ -23,10 +23,17 @@ RATE_LIMITED_PATHS = frozenset({"/v1/run", "/v1/check", "/v1/compile"})
 class RateLimitMiddleware:
     """Charge one token per compiler request; refuse with 429 before the body is read."""
 
-    def __init__(self, app: ASGIApp, limiter: RateLimiter, trusted_proxy_hops: int = 0) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        limiter: RateLimiter,
+        trusted_proxy_hops: int = 0,
+        client_ip_header: str | None = None,
+    ) -> None:
         self.app = app
         self.limiter = limiter
         self.trusted_proxy_hops = trusted_proxy_hops
+        self.client_ip_header = client_ip_header
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if not (
@@ -36,7 +43,8 @@ class RateLimitMiddleware:
         ):
             await self.app(scope, receive, send)
             return
-        decision = self.limiter.check(client_ip(HTTPConnection(scope), self.trusted_proxy_hops))
+        client = client_ip(HTTPConnection(scope), self.trusted_proxy_hops, self.client_ip_header)
+        decision = self.limiter.check(client)
         limit = {"X-RateLimit-Limit": str(self.limiter.per_minute)}
         if not decision.allowed:
             response = error_response(

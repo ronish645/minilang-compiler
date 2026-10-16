@@ -13,11 +13,15 @@ services:
         value: "30"
       - key: MINILANG_MAX_SOURCE_CHARS
         value: "20000"
-      # Render's load balancer appends the address it received the request from to
-      # X-Forwarded-For, so the client is the 1st entry from the right; anything to its
-      # left was written by the client and is ignored. Confirm this against Render's
-      # docs (and the logged "client" field) after deploying; 0 would use the proxy's IP.
+      # Who is the client? Measured on the live service (2026-10-15): Render keeps any
+      # X-Forwarded-For the client sends (so the leftmost entry can be forged), and the
+      # rightmost entry is a proxy address that changes between requests. Cloudflare,
+      # in front of Render, overwrites CF-Connecting-IP with the real client address,
+      # so trust that header and nothing in X-Forwarded-For. If the header is missing,
+      # hops 0 falls back to the socket peer (all such requests share one bucket: safe).
+      - key: MINILANG_CLIENT_IP_HEADER
+        value: CF-Connecting-IP
       - key: MINILANG_TRUSTED_PROXY_HOPS
-        value: "1"
+        value: "0"
       - key: MINILANG_MAX_CONCURRENT_PROGRAMS
         value: "4"
