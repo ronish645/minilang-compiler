@@ -14,9 +14,10 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff==0.17.0"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff==0.17.0", "httpx2>=2"]  # httpx2: for the API test client
 bench = ["anthropic>=0.40", "openai>=1.50", "pyyaml>=6", "python-dotenv>=1"]
 mcp = ["mcp>=1.2"]
+api = ["fastapi>=0.140", "uvicorn[standard]>=0.30"]
 
 [project.scripts]
 minilang = "minilang.cli:main"
