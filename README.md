@@ -7,7 +7,7 @@
 
 **Can a language model learn a programming language it has never seen, from the spec alone? And when its code fails, how much do better compiler error messages help it recover?**
 
-**[Live demo →](https://ronish645.github.io/minilang-compiler/)** run the compiler in your browser, explore the benchmark charts, and inspect every graded episode.
+**[Live demo →](https://ronish645.github.io/minilang-compiler/)** run the compiler in your browser, explore the benchmark charts, and inspect every graded episode. **[REST API →](https://minilang-api.onrender.com/docs)** call the compiler over HTTP (the free host sleeps when idle, so the first request can take about a minute).
 
 MiniLang is a small C/JavaScript-style language created for this project, so it can't be in any model's training data. This repo contains:
 
@@ -144,7 +144,7 @@ minilang-mcp            # stdio server; register this command in Claude Desktop 
 
 ## REST API
 
-A FastAPI service for calling the compiler over HTTP ([`minilang/api/`](minilang/api/)). Interactive docs are at `/docs`.
+A FastAPI service for calling the compiler over HTTP ([`minilang/api/`](minilang/api/)), live at **https://minilang-api.onrender.com** with interactive docs at [`/docs`](https://minilang-api.onrender.com/docs). It runs on Render's free tier, which sleeps after 15 idle minutes, so the first request after that takes up to a minute.
 
 | Endpoint | Does |
 |---|---|
