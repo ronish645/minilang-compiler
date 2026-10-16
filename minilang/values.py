@@ -70,6 +70,38 @@ def format_element(value: Any) -> str:
     return f'"{value}"' if isinstance(value, str) else format_value(value)
 
 
+def formatted_length(value: Any, limit: int) -> int:
+    """Length of format_value(value), counted without building the text.
+
+    Stops counting once it passes ``limit``, so a huge or self-containing array
+    costs at most ``limit`` work. Returns a number > limit when it's too long.
+    """
+    total = 0
+    stack: list[tuple[Any, bool]] = [(value, False)]  # (value, inside an array)
+    while stack:
+        item, nested = stack.pop()
+        if type_name(item) == "array":
+            # "[" + "]" + ", " between elements
+            total += 2 + 2 * max(0, len(item) - 1)
+            stack.extend((element, True) for element in item)
+        elif isinstance(item, str):
+            total += len(item) + (2 if nested else 0)
+        else:
+            total += len(format_value(item))
+        if total > limit:
+            return total
+    return total
+
+
+def format_bounded(value: Any, limit: int) -> str:
+    """format_value, refusing values whose text would be longer than ``limit``."""
+    if formatted_length(value, limit) > limit:
+        raise MiniLangRuntimeError(
+            f"value is too large to convert to text (over {limit} characters)"
+        )
+    return format_value(value)
+
+
 def values_equal(left: Any, right: Any) -> bool:
     # Without this, Python would report true == 1.
     if isinstance(left, bool) != isinstance(right, bool):
@@ -99,7 +131,11 @@ def apply_arithmetic(op: str, left: Any, right: Any) -> Any:
         "/": lambda: left / right,
         "%": lambda: left % right,
     }
-    return operations[op]()
+    try:
+        return operations[op]()
+    except OverflowError:
+        # e.g. a huge int divided (converted to a float): Python raises instead of inf.
+        raise MiniLangRuntimeError(f"number too large for '{op}'") from None
 
 
 def apply_binary(op: str, left: Any, right: Any) -> Any:

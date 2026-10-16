@@ -12,10 +12,14 @@ After a syntax error the parser records it, skips ahead to the next statement
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from minilang.ast_nodes import ASTNode
 from minilang.errors import ErrorCollector, ParserError
 from minilang.hints import syntax_hint
 from minilang.lexer import Token
+from minilang.recursion import FRONT_END_RECURSION_LIMIT, python_recursion_limit
 
 ASSIGNMENT_OPS = ("=", "+=", "-=", "*=", "/=")
 EQUALITY_OPS = ("==", "!=", "===")
@@ -24,6 +28,10 @@ TERM_OPS = ("+", "-")
 FACTOR_OPS = ("*", "/", "%")
 PREFIX_OPS = ("!", "-", "++", "--")
 POSTFIX_OPS = ("++", "--")
+# Deeper programs are refused with a clean error instead of exhausting the Python
+# stack. Real code nests a handful of levels; generated or hostile code can nest thousands.
+MAX_NESTING = 200  # recursive parse calls (brackets, prefix operators, blocks)
+MAX_TREE_DEPTH = 400  # the finished AST, which also bounds long chains like 1 + 1 + ...
 LITERAL_TOKEN_TYPES = {"INT": "int", "FLOAT": "float", "STRING": "string"}
 LITERAL_KEYWORD_TYPES = {"true": "bool", "false": "bool", "null": "null"}
 TOKEN_TYPE_NAMES = {"IDENT": "an identifier", "KW": "a keyword", "OP": "an operator"}
@@ -44,6 +52,7 @@ class Parser:
         self.i = 0
         self.previous: Token | None = None
         self.errors = ErrorCollector()
+        self.depth = 0
 
     # ---- token helpers -----------------------------------------------------
     def current(self) -> Token:
@@ -97,6 +106,22 @@ class Parser:
         previous = self.previous.value if self.previous else None
         return syntax_hint(previous, found.value, expected)
 
+    @contextmanager
+    def nested(self) -> Iterator[None]:
+        """Count one level of recursion; refuse programs nested past MAX_NESTING."""
+        self.depth += 1
+        try:
+            if self.depth > MAX_NESTING:
+                tok = self.current()
+                raise ParserError(
+                    f"program is nested too deeply (more than {MAX_NESTING} levels)",
+                    tok.line,
+                    tok.col,
+                )
+            yield
+        finally:
+            self.depth -= 1
+
     # ---- error recovery ----------------------------------------------------
     def statement_or_recover(self) -> ASTNode | None:
         """Parse one statement; on a syntax error, record it and skip ahead."""
@@ -142,15 +167,21 @@ class Parser:
 
     # ---- statements --------------------------------------------------------
     def parse(self) -> ASTNode:
-        program = make_node("Program", self.current())
-        while not self.check("EOF"):
-            node = self.statement_or_recover()
-            if node is not None:
-                program.children.append(node)
+        with python_recursion_limit(FRONT_END_RECURSION_LIMIT):
+            program = make_node("Program", self.current())
+            while not self.check("EOF"):
+                node = self.statement_or_recover()
+                if node is not None:
+                    program.children.append(node)
         self.errors.raise_if_any()
+        check_tree_depth(program)
         return program
 
     def statement(self) -> ASTNode:
+        with self.nested():
+            return self.statement_inner()
+
+    def statement_inner(self) -> ASTNode:
         tok = self.current()
         if tok.type == "KW":
             handler = {
@@ -285,13 +316,15 @@ class Parser:
 
     # ---- expressions (lowest precedence first) -----------------------------
     def expression(self) -> ASTNode:
-        return self.assignment()
+        with self.nested():
+            return self.assignment()
 
     def assignment(self) -> ASTNode:
         left = self.logical_or()
         if self.check_op(ASSIGNMENT_OPS):
             op = self.advance()
-            right = self.assignment()  # right-associative: a = b = c
+            with self.nested():
+                right = self.assignment()  # right-associative: a = b = c
             return make_node("Assign", op, value=op.value, children=[left, right])
         return left
 
@@ -324,7 +357,9 @@ class Parser:
     def unary(self) -> ASTNode:
         if self.check_op(PREFIX_OPS):
             op = self.advance()
-            return make_node("UnaryOp", op, value=op.value, children=[self.unary()])
+            with self.nested():
+                operand = self.unary()
+            return make_node("UnaryOp", op, value=op.value, children=[operand])
         return self.postfix()
 
     def postfix(self) -> ASTNode:
@@ -397,3 +432,17 @@ class Parser:
                 args.children.append(self.expression())
         self.expect("SEP", ")")
         return make_node("Call", callee, children=[callee, args])
+
+
+def check_tree_depth(program: ASTNode) -> None:
+    """Refuse ASTs deeper than MAX_TREE_DEPTH (checked without recursion)."""
+    stack = [(program, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > MAX_TREE_DEPTH:
+            raise ParserError(
+                f"program is nested too deeply (more than {MAX_TREE_DEPTH} levels)",
+                node.line,
+                node.col,
+            )
+        stack.extend((child, depth + 1) for child in node.children)

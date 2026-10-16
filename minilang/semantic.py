@@ -22,6 +22,7 @@ from minilang.hints import (
     STRING_CONCAT_HINT,
     did_you_mean,
 )
+from minilang.recursion import FRONT_END_RECURSION_LIMIT, python_recursion_limit
 
 ARITHMETIC_OPS = ("+", "-", "*", "/", "%")
 COMPARISON_OPS = ("<", ">", "<=", ">=")
@@ -182,7 +183,8 @@ class SemanticAnalyzer:
 
     # ---- statements --------------------------------------------------------
     def visit_Program(self, node: ASTNode) -> None:
-        self.analyze_statements(node.children)
+        with python_recursion_limit(FRONT_END_RECURSION_LIMIT):
+            self.analyze_statements(node.children)
         self.errors.raise_if_any()
 
     def visit_Block(self, node: ASTNode) -> None:

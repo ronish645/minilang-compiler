@@ -16,7 +16,7 @@ print(fact(5));   // 120
 - **Identifiers:** a letter or `_` followed by letters, digits or `_`. Case-sensitive.
 - **Keywords:** `let const if else while for break continue fn return print true false null`
 - **Built-in functions** (reserved names): `len push pop str int abs min max ord chr slice`
-- **Integers:** `0`, `42`. There is no leading `-` in a literal; `-5` is unary minus applied to `5`. Integers have arbitrary precision.
+- **Integers:** `0`, `42`. There is no leading `-` in a literal; `-5` is unary minus applied to `5`. Integers have arbitrary precision, up to about 4,000 digits.
 - **Floats:** `3.14`, `1e5`, `2.5E-3`. A digit is required after `.`.
 - **Strings:** `"double"` or `'single'` quoted. Escapes: `\n \t \\ \' \"`. Inside single quotes, `''` is a literal `'`.
 - Every statement ends with `;`, except blocks and `if`/`while`/`for`/`fn`, which end with `}`.
@@ -198,7 +198,9 @@ error[semantic]: variable 'totl' used before declaration
 
 ## 11. Resource limits
 
-A run is stopped with a runtime error if it executes more than 1,000,000 statements, nests more than 500 function calls, or prints more than 10,000 lines.
+A run is stopped with a runtime error if it executes more than 1,000,000 statements, nests more than 500 function calls, prints more than 10,000 lines, or builds a string, array or integer past its size limit (an integer is limited to about 4,000 digits). Programs nested more than 200 levels deep (brackets, blocks, prefix operators) are rejected with a syntax error.
+
+Services that run untrusted code (the online playground and the REST API) use tighter limits: 200,000 statements, 2 seconds, and strings, arrays and printed output of up to 100,000 characters or elements.
 
 ## 12. Differences from JavaScript and Python
 

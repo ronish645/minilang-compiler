@@ -32,10 +32,47 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -e ".[dev,bench,mcp]"
+      - run: pip install -e ".[dev,bench,mcp,api]"
       - name: Run tests (coverage must stay >= 80%)
         run: pytest --cov --cov-report=term-missing
       - name: Smoke-test the CLI
         run: |
           minilang run examples/sample.ml
           minilang check examples/sample.ml
+
+  api-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the API image
+        run: docker build -t minilang-api .
+      - name: Run it and call the API
+        run: |
+          docker run -d --name api -p 8000:8000 minilang-api
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+          curl -sf localhost:8000/health | grep '"status":"ok"'
+          curl -sf -X POST localhost:8000/v1/run -H 'Content-Type: application/json' \
+            -d '{"source": "print(6 * 7);"}' | grep '"output":\["42"\]'
+          curl -sf localhost:8000/v1/spec -o spec.md  # to a file: head would close a pipe early
+          head -1 spec.md | grep 'MiniLang Language Specification'
+      - name: Check hardening against the real image
+        run: |
+          test "$(docker exec api id -u)" != "0"  # not running as root
+          # A body over the limit is a 413, declared (Content-Length) or streamed (chunked).
+          python3 -c "print('{\"source\": \"' + 'x' * 200000 + '\"}')" > big.json
+          code=$(curl -s -o resp.json -w '%{http_code}' -X POST localhost:8000/v1/run \
+            -H 'Content-Type: application/json' --data-binary @big.json)
+          test "$code" = 413  # separate lines: a failing `test` in an && list wouldn't stop the step
+          grep -q '"code":"payload_too_large"' resp.json
+          code=$(curl -s -o resp.json -w '%{http_code}' -X POST localhost:8000/v1/run \
+            -H 'Content-Type: application/json' -H 'Transfer-Encoding: chunked' \
+            --data-binary @big.json)
+          test "$code" = 413
+          grep -q '"code":"payload_too_large"' resp.json
+          # Unknown routes use the same error format.
+          code=$(curl -s -o resp.json -w '%{http_code}' localhost:8000/v1/nope)
+          test "$code" = 404
+          grep -q '"code":"not_found"' resp.json
+      - name: Show container logs
+        if: always()
+        run: docker logs api

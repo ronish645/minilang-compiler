@@ -1,0 +1,7 @@
+# Send only what the image needs to the Docker build.
+*
+!pyproject.toml
+!README.md
+!minilang/
+!docs/LANGUAGE_SPEC.md
+**/__pycache__
