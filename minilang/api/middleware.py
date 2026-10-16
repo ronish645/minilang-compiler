@@ -7,6 +7,7 @@ any response (including errors produced by other middleware) and catch crashes.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import re
@@ -31,8 +32,20 @@ def request_id_for(connection: HTTPConnection) -> str:
     return given if SAFE_REQUEST_ID.match(given) else uuid.uuid4().hex
 
 
-def client_ip(connection: HTTPConnection, hops: int) -> str:
-    """The caller's IP, trusting X-Forwarded-For only as far as our own proxies.
+def is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
+def client_ip(connection: HTTPConnection, hops: int, header: str | None = None) -> str:
+    """The caller's IP, trusting only what our own infrastructure wrote.
+
+    If ``header`` names a header our edge proxy *overwrites* with the client address
+    (Cloudflare's CF-Connecting-IP, in front of Render), that's the answer. Otherwise
+    X-Forwarded-For is trusted only as far as our own proxies:
 
     Each proxy *appends* the address it received the request from, so the rightmost
     entries are written by our infrastructure and everything to their left is whatever
@@ -40,11 +53,15 @@ def client_ip(connection: HTTPConnection, hops: int) -> str:
     from the right. With ``hops=0`` the header is ignored: the socket peer is the client.
     """
     peer = connection.client.host if connection.client else "unknown"
+    if header:
+        trusted = connection.headers.get(header, "").strip()
+        if is_ip(trusted):
+            return trusted
     if hops == 0:
         return peer
     values = connection.headers.getlist("x-forwarded-for")
     entries = [entry.strip() for entry in ",".join(values).split(",") if entry.strip()]
-    if len(entries) < hops:
+    if len(entries) < hops or not is_ip(entries[-hops]):
         return peer  # not what our proxy chain produces: don't guess
     return entries[-hops]
 
@@ -52,9 +69,12 @@ def client_ip(connection: HTTPConnection, hops: int) -> str:
 class RequestContextMiddleware:
     """Request ID on every response, one JSON log line per request, and a clean 500."""
 
-    def __init__(self, app: ASGIApp, trusted_proxy_hops: int = 0) -> None:
+    def __init__(
+        self, app: ASGIApp, trusted_proxy_hops: int = 0, client_ip_header: str | None = None
+    ) -> None:
         self.app = app
         self.trusted_proxy_hops = trusted_proxy_hops
+        self.client_ip_header = client_ip_header
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -101,7 +121,7 @@ class RequestContextMiddleware:
                     "path": connection.url.path,
                     "status": status,
                     "ms": round((time.perf_counter() - start) * 1000, 1),
-                    "client": client_ip(connection, self.trusted_proxy_hops),
+                    "client": client_ip(connection, self.trusted_proxy_hops, self.client_ip_header),
                 }
             )
         )

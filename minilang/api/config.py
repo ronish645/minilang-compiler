@@ -46,6 +46,9 @@ class Settings:
     # How many proxies in front of us append to X-Forwarded-For. 0: trust no header and
     # use the socket peer. 1: the platform's load balancer (e.g. Render) appends one entry.
     trusted_proxy_hops: int = 0
+    # A header our edge proxy overwrites with the client IP; it wins when it holds a
+    # valid IP. On Render that's CF-Connecting-IP (Cloudflare sits in front of Render).
+    client_ip_header: str | None = None
     # Programs compiled/run at the same time; more get a 503 instead of queueing CPU work.
     max_concurrent_programs: int = 4
 
@@ -75,5 +78,6 @@ class Settings:
             ),
             allowed_origins=env_list("MINILANG_ALLOWED_ORIGINS", DEFAULT_ORIGINS),
             trusted_proxy_hops=env_int("MINILANG_TRUSTED_PROXY_HOPS", 0, minimum=0),
+            client_ip_header=os.environ.get("MINILANG_CLIENT_IP_HEADER", "").strip() or None,
             max_concurrent_programs=env_int("MINILANG_MAX_CONCURRENT_PROGRAMS", 4),
         )

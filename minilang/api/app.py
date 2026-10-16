@@ -57,8 +57,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         RateLimitMiddleware,
         limiter=app.state.limiter,
         trusted_proxy_hops=settings.trusted_proxy_hops,
+        client_ip_header=settings.client_ip_header,
     )
-    app.add_middleware(RequestContextMiddleware, trusted_proxy_hops=settings.trusted_proxy_hops)
+    app.add_middleware(
+        RequestContextMiddleware,
+        trusted_proxy_hops=settings.trusted_proxy_hops,
+        client_ip_header=settings.client_ip_header,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.allowed_origins),
