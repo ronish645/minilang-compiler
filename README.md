@@ -142,6 +142,33 @@ pip install -e ".[mcp]"
 minilang-mcp            # stdio server; register this command in Claude Desktop / Claude Code
 ```
 
+## REST API
+
+A FastAPI service for calling the compiler over HTTP ([`minilang/api/`](minilang/api/)). Interactive docs are at `/docs`.
+
+| Endpoint | Does |
+|---|---|
+| `POST /v1/run` | Compile and run; output, every error with fix-it hints, and the diagnostic |
+| `POST /v1/check` | Type-check without running |
+| `POST /v1/compile` | Every stage: tokens, AST, three-address code, pseudo-assembly, output |
+| `GET /v1/spec` | The language spec (Markdown), e.g. for an AI agent learning MiniLang |
+| `GET /health` | Liveness check |
+
+```bash
+pip install -e ".[api]"
+uvicorn minilang.api.app:app --reload        # http://127.0.0.1:8000/docs
+
+curl -s -X POST localhost:8000/v1/run -H 'Content-Type: application/json' \
+  -d '{"source": "let xs = [1, 2];\nprint(xs.length);"}'
+# {"ok": false, "errors": [{"stage": "syntax", "message": "expected ')' but found '.'",
+#   "line": 2, "col": 9, "hint": "MiniLang has no methods or properties; built-ins are len(x), ..."}], ...}
+```
+
+- **Program errors are data:** a syntax, type or runtime error in the program is a `200` with `ok: false`. Request problems are `4xx` with `{"error": {"code", "message", "details"}}`; `500` and `503` use the same shape, and every response (errors included) carries `X-Request-ID` and the CORS headers.
+- **Limits:** 30 requests per minute per client on the compiler endpoints (token bucket; `429` with `Retry-After`, checked before the body is read), request bodies capped whether sent with `Content-Length` or chunked (`413`), programs up to 20,000 characters (a setting can lower this), at most 4 programs compiling at once (`503 server_busy` with `Retry-After: 1`), and the interpreter's step, call-depth and output limits.
+- **Client IP behind a proxy:** `X-Forwarded-For` is not trusted blindly. `MINILANG_TRUSTED_PROXY_HOPS=N` takes the N-th entry from the right (the one our own proxy appended); the default `0` uses the socket peer. Run uvicorn with `--no-proxy-headers` so it doesn't rewrite the address first (the Dockerfile does).
+- **Deploy:** `docker build -t minilang-api . && docker run -p 8000:8000 minilang-api`, or the Render blueprint in [`render.yaml`](render.yaml) (which sets one trusted proxy hop). Settings come from `MINILANG_*` environment variables ([`config.py`](minilang/api/config.py)).
+
 ## Design decisions
 
 - **Gradual typing.** Literal and variable types are checked before running. Function parameters are typed `unknown` and checked at run time, so `fn isEven(n) { return n % 2 == 0; }` type-checks without type annotations.
@@ -152,20 +179,21 @@ minilang-mcp            # stdio server; register this command in Claude Desktop 
 ## Testing
 
 ```bash
-pytest --cov          # 300+ tests, 97% coverage
+pytest --cov          # 530+ tests, 98% coverage
 ruff check . && ruff format --check .
 ```
 
 - **Golden tests** pin the tokens, AST, TAC, assembly and output of the programs in `tests/programs/`. They were captured from the original compiler before refactoring, to prove the refactor changed nothing.
 - **Regression tests** cover 8 bugs found in the original version ([`test_regressions.py`](tests/test_regressions.py)).
 - **Unit tests** cover each stage. **Docs tests** run every code example in this README and the spec.
-- CI runs on Python 3.10–3.13.
+- CI runs on Python 3.10–3.13, builds the API's Docker image and calls it.
 
 ## Roadmap
 
 - [x] Package refactor, positioned errors, CLI, runtime limits, CI
 - [x] Multi-provider LLM benchmark with feedback-quality experiment
 - [x] MCP server exposing the compiler as tools for AI assistants
+- [x] REST API (FastAPI): run/check/compile endpoints, rate limiting, Docker, Render deploy
 - [x] Showcase site: in-browser playground (Pyodide), benchmark charts, episode explorer
 - [x] v2.1: calls on any expression (first-class functions), `if`/`else` type joins, `abs`/`min`/`max`/`ord`/`chr`/`slice`
 - [ ] Benchmark mid-size open models (7–14B), where error quality is most likely to matter
@@ -176,7 +204,7 @@ ruff check . && ruff format --check .
 ## Repository layout
 
 ```
-minilang/        compiler package (one module per stage) + MCP server
+minilang/        compiler package (one module per stage), MCP server, REST API (api/)
 bench/           LLM benchmark: tasks, agent loop, provider adapters, runner, report
 tests/           unit, golden, regression, CLI, docs, MCP and benchmark tests
 examples/        sample programs
